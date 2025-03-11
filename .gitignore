@@ -1,0 +1,24 @@
+# Arquivos de compilação
+bin/
+obj/
+
+# Arquivos de IDE e editores
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Arquivos de configuração local
+appsettings.Development.json
+appsettings.local.json
+
+# Pacotes NuGet
+packages/
+
+# Arquivos de log
+*.log
+
+# Arquivos temporários
+[Tt]emp/
