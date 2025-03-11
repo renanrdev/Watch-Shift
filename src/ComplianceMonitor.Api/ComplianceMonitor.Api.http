@@ -1,0 +1,6 @@
+@ComplianceMonitor.Api_HostAddress = http://localhost:5151
+
+GET {{ComplianceMonitor.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
