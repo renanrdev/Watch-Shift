@@ -11,6 +11,7 @@ using ComplianceMonitor.Domain.Enums;
 using ComplianceMonitor.Domain.Interfaces.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using YamlDotNet.Core.Tokens;
 
 namespace ComplianceMonitor.Infrastructure.Scanners
 {
@@ -168,19 +169,79 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
                 // Execute Trivy to scan the image and get JSON result
                 var timeoutArg = $"{_options.TimeoutSeconds}s";
-                var arguments = $"image --format json --timeout {timeoutArg} {imageName}";
 
-                _logger.LogInformation($"Running Trivy with command: {_options.TrivyPath} {arguments}");
+                // Construir argumentos do comando
+                var arguments = new List<string> { "image", "--format", "json", "--timeout", timeoutArg };
+
+                // Adicionar credenciais do OpenShift se necessário
+                string originalImageName = imageName;
+                if (_options.UseOpenShiftCredentials)
+                {
+                    var token = Environment.GetEnvironmentVariable("OPENSHIFT_TOKEN");
+                    if (!string.IsNullOrEmpty(token))
+                    {
+                        _logger.LogInformation("Using OpenShift credentials for authentication");
+
+                        // Se a imagem parecer ser do registro interno do OpenShift (sem domínio explícito)
+                        if (imageName.Contains("/") && !imageName.Contains(".") &&
+                            !imageName.StartsWith("docker.io/") &&
+                            !imageName.StartsWith("quay.io/"))
+                        {
+                            // Formato: namespace/imagename:tag
+                            _logger.LogInformation("Image appears to be from internal OpenShift registry");
+
+                            // Adicionar o prefixo do registro se necessário
+                            if (!string.IsNullOrEmpty(_options.OpenShiftRegistry) &&
+                                !imageName.StartsWith(_options.OpenShiftRegistry))
+                            {
+                                imageName = $"{_options.OpenShiftRegistry}/{imageName}";
+                                _logger.LogInformation($"Using full OpenShift registry path: {imageName}");
+                            }
+
+                            // Adicionar credenciais no comando
+                            arguments.Add("--username");
+                            arguments.Add("sa"); // ServiceAccount username, não importa para OpenShift
+                            arguments.Add("--password");
+                            arguments.Add(token);
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("OpenShift credentials requested but OPENSHIFT_TOKEN environment variable not set");
+                    }
+                }
+
+                // Adicionar nome da imagem aos argumentos
+                arguments.Add(imageName);
+
+                // Log de comando (ocultando senha)
+               // _logger.LogInformation($"Running Trivy with command: {_options.TrivyPath} {string.Join(" ", arguments.Where(a => a != token))}");
 
                 var startInfo = new ProcessStartInfo
                 {
                     FileName = _options.TrivyPath,
-                    Arguments = arguments,
+                    Arguments = string.Join(" ", arguments),
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
                     CreateNoWindow = true
                 };
+
+                // Configurar variáveis de ambiente para o Trivy
+                if (_options.UseOpenShiftCredentials)
+                {
+                    var token = Environment.GetEnvironmentVariable("OPENSHIFT_TOKEN");
+                    if (!string.IsNullOrEmpty(token))
+                    {
+                        // Adicionar credenciais como variáveis de ambiente também (método alternativo)
+                        startInfo.EnvironmentVariables["TRIVY_USERNAME"] = "sa";
+                        startInfo.EnvironmentVariables["TRIVY_PASSWORD"] = token;
+
+                        // Variáveis de ambiente que ajudam a depurar problemas de rede
+                        startInfo.EnvironmentVariables["TRIVY_DEBUG"] = "true";
+                        startInfo.EnvironmentVariables["TRIVY_INSECURE"] = "true"; // Ignora erros de certificado
+                    }
+                }
 
                 using var process = Process.Start(startInfo);
                 if (process == null)
@@ -205,16 +266,33 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
                     if (process.ExitCode != 0)
                     {
-                        _logger.LogError($"Error scanning image {imageName}: {error}");
+                        _logger.LogError($"Error scanning image {imageName}: ExitCode={process.ExitCode}");
+                        _logger.LogError($"Error output: {error}");
                         return new ImageScanResult(
-                            imageName,
+                            originalImageName,
                             new List<Vulnerability>(),
                             DateTime.UtcNow,
-                            new Dictionary<string, object> { ["error"] = error.Trim() }
+                            new Dictionary<string, object>
+                            {
+                                ["error"] = error.Trim(),
+                                ["exitCode"] = process.ExitCode
+                            }
                         );
                     }
 
                     _logger.LogInformation($"Scan completed for {imageName}, processing results");
+
+                    // Check if output is valid JSON
+                    if (string.IsNullOrWhiteSpace(output))
+                    {
+                        _logger.LogWarning("Trivy returned empty output");
+                        return new ImageScanResult(
+                            originalImageName,
+                            new List<Vulnerability>(),
+                            DateTime.UtcNow,
+                            new Dictionary<string, object> { ["error"] = "Empty scan result" }
+                        );
+                    }
 
                     JsonDocument scanResult;
                     try
@@ -224,16 +302,17 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                     catch (JsonException ex)
                     {
                         _logger.LogError(ex, $"Error parsing Trivy JSON output for {imageName}");
+                        _logger.LogError($"Invalid JSON: {output}");
                         return new ImageScanResult(
-                            imageName,
+                            originalImageName,
                             new List<Vulnerability>(),
                             DateTime.UtcNow,
                             new Dictionary<string, object> { ["error"] = $"Error parsing Trivy output: {ex.Message}" }
                         );
                     }
 
-                    var parsedResult = ParseTrivyResult(imageName, scanResult);
-                    _logger.LogInformation($"Found {parsedResult.Vulnerabilities.Count} vulnerabilities for {imageName}");
+                    var parsedResult = ParseTrivyResult(originalImageName, scanResult);
+                    _logger.LogInformation($"Found {parsedResult.Vulnerabilities.Count} vulnerabilities for {originalImageName}");
 
                     return parsedResult;
                 }
@@ -254,7 +333,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
                         _logger.LogError($"Timeout scanning image {imageName}");
                         return new ImageScanResult(
-                            imageName,
+                            originalImageName,
                             new List<Vulnerability>(),
                             DateTime.UtcNow,
                             new Dictionary<string, object> { ["error"] = "Timeout during scan" }
@@ -322,7 +401,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                                         var severityStr = vuln.GetProperty("Severity").GetString()?.ToUpper() ?? "UNKNOWN";
                                         VulnerabilitySeverity severity;
 
-                                        if (!Enum.TryParse(severityStr, out severity))
+                                        if (!Enum.TryParse(severityStr,true, out severity))
                                         {
                                             _logger.LogWarning($"Unknown severity: {severityStr}, using Unknown");
                                             severity = VulnerabilitySeverity.Unknown;
@@ -344,7 +423,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                                             packageName: vuln.GetProperty("PkgName").GetString(),
                                             installedVersion: vuln.GetProperty("InstalledVersion").GetString(),
                                             fixedVersion: vuln.TryGetProperty("FixedVersion", out var fixedVersionElement) ?
-                                                fixedVersionElement.GetString() : null,
+                                              fixedVersionElement.GetString() ?? string.Empty : string.Empty,
                                             severity: severity,
                                             description: vuln.TryGetProperty("Description", out var descriptionElement) ?
                                                 descriptionElement.GetString() : string.Empty,
@@ -424,5 +503,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
     {
         public string TrivyPath { get; set; } = "trivy";
         public int TimeoutSeconds { get; set; } = 300;
+        public string OpenShiftRegistry { get; set; }
+        public bool UseOpenShiftCredentials { get; set; } = false;
     }
 }

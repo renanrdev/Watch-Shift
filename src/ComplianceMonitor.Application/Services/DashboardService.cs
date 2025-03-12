@@ -87,16 +87,16 @@ namespace ComplianceMonitor.Application.Services
                         {
                             switch (kvp.Key)
                             {
-                                case VulnerabilitySeverity.Critical:
+                                case VulnerabilitySeverity.CRITICAL:
                                     result.VulnerabilityStats.Critical += kvp.Value;
                                     break;
-                                case VulnerabilitySeverity.High:
+                                case VulnerabilitySeverity.HIGH:
                                     result.VulnerabilityStats.High += kvp.Value;
                                     break;
-                                case VulnerabilitySeverity.Medium:
+                                case VulnerabilitySeverity.MEDIUM:
                                     result.VulnerabilityStats.Medium += kvp.Value;
                                     break;
-                                case VulnerabilitySeverity.Low:
+                                case VulnerabilitySeverity.LOW:
                                     result.VulnerabilityStats.Low += kvp.Value;
                                     break;
                                 case VulnerabilitySeverity.Unknown:

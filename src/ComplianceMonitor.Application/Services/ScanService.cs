@@ -237,12 +237,12 @@ namespace ComplianceMonitor.Application.Services
                         var severityCounts = scan.CountBySeverity();
                         totalVulnerabilities += severityCounts.Sum(kvp => kvp.Value);
 
-                        if (severityCounts.TryGetValue(VulnerabilitySeverity.Critical, out int criticalCount))
+                        if (severityCounts.TryGetValue(VulnerabilitySeverity.CRITICAL, out int criticalCount))
                         {
                             criticalVulnerabilities += criticalCount;
                         }
 
-                        if (severityCounts.TryGetValue(VulnerabilitySeverity.High, out int highCount))
+                        if (severityCounts.TryGetValue(VulnerabilitySeverity.HIGH, out int highCount))
                         {
                             highVulnerabilities += highCount;
                         }

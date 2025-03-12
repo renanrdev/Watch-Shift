@@ -42,16 +42,16 @@ namespace ComplianceMonitor.Application.Mapping
             {
                 var counts = scan.CountBySeverity();
 
-                if (counts.TryGetValue(VulnerabilitySeverity.Critical, out int critical))
+                if (counts.TryGetValue(VulnerabilitySeverity.CRITICAL, out int critical))
                     stats.Critical += critical;
 
-                if (counts.TryGetValue(VulnerabilitySeverity.High, out int high))
+                if (counts.TryGetValue(VulnerabilitySeverity.HIGH, out int high))
                     stats.High += high;
 
-                if (counts.TryGetValue(VulnerabilitySeverity.Medium, out int medium))
+                if (counts.TryGetValue(VulnerabilitySeverity.MEDIUM, out int medium))
                     stats.Medium += medium;
 
-                if (counts.TryGetValue(VulnerabilitySeverity.Low, out int low))
+                if (counts.TryGetValue(VulnerabilitySeverity.LOW, out int low))
                     stats.Low += low;
 
                 if (counts.TryGetValue(VulnerabilitySeverity.Unknown, out int unknown))

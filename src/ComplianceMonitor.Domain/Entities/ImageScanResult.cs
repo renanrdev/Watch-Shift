@@ -43,7 +43,7 @@ namespace ComplianceMonitor.Domain.Entities
 
         public bool HasCriticalVulnerabilities()
         {
-            return Vulnerabilities.Any(v => v.Severity == VulnerabilitySeverity.Critical);
+            return Vulnerabilities.Any(v => v.Severity == VulnerabilitySeverity.CRITICAL);
         }
     }
 }
