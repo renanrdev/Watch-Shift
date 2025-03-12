@@ -22,7 +22,7 @@ namespace ComplianceMonitor.Infrastructure
         {
             // Database configuration
             services.AddDbContext<ComplianceDbContext>(options =>
-                options.UseSqlServer(
+                options.UseNpgsql(
                     configuration.GetConnectionString("DefaultConnection"),
                     b => b.MigrationsAssembly(typeof(ComplianceDbContext).Assembly.FullName)));
 
