@@ -23,7 +23,7 @@ namespace ComplianceMonitor.Infrastructure.Data
 
             var builder = new DbContextOptionsBuilder<ComplianceDbContext>();
 
-            var connectionString = "Host=localhost;Database=ComplianceMonitorDb_Dev;Username=postgres;Password=sua_senha";
+            var connectionString = "Host=localhost;Database=ComplianceMonitorDb_Dev;Username=postgres;Password=dbpassword";
 
             builder.UseNpgsql(connectionString,
                 b => b.MigrationsAssembly(typeof(ComplianceDbContext).Assembly.FullName));
