@@ -26,6 +26,8 @@ namespace ComplianceMonitor.Application.DTOs
         public string Severity { get; set; }
         public string Title { get; set; }
         public string Resource { get; set; }
+
+        public string Source { get; set; } = "Database";
         public string Message { get; set; }
         public DateTime Timestamp { get; set; }
     }

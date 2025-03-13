@@ -37,9 +37,11 @@ namespace ComplianceMonitor.Infrastructure
             services.Configure<KubernetesClientOptions>(configuration.GetSection("Kubernetes"));
             services.AddSingleton<IKubernetesClient, KubernetesClient>();
 
-            // Trivy scanner
+            // Trivy scanners
             services.Configure<TrivyScannerOptions>(configuration.GetSection("Trivy"));
+            services.Configure<TrivyOperatorScannerOptions>(configuration.GetSection("TrivyOperator"));
             services.AddSingleton<IVulnerabilityScanner, TrivyScanner>();
+            services.AddSingleton<IVulnerabilityScanner, TrivyOperatorScanner>();
 
             // Background services
             services.AddHostedService<ScanBackgroundService>();
@@ -58,18 +60,17 @@ namespace ComplianceMonitor.Infrastructure
             services.AddScoped<IScanService, ScanService>();
             services.AddScoped<IDashboardService, DashboardService>();
 
-            // Configuration for ScanService
-            services.AddSingleton(sp => new ScanServiceOptions
-            {
-                ScanIntervalHours = configuration.GetValue<int>("Trivy:ScanIntervalHours", 24)
+            // Configuration for services
+            services.Configure<ScanServiceOptions>(options => {
+                options.ScanIntervalHours = configuration.GetValue<int>("Trivy:ScanIntervalHours", 24);
+                options.UseOperatorScanner = configuration.GetValue<bool>("TrivyOperator:Enabled", true);
+            });
+
+            services.Configure<DashboardServiceOptions>(options => {
+                options.UseTrivyOperator = configuration.GetValue<bool>("TrivyOperator:Enabled", true);
             });
 
             return services;
         }
-    }
-
-    public class ScanServiceOptions
-    {
-        public int ScanIntervalHours { get; set; } = 24;
     }
 }

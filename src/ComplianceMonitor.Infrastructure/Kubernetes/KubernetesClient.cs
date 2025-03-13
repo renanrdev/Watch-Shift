@@ -7,6 +7,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using ComplianceMonitor.Application.Interfaces;
 using ComplianceMonitor.Domain.Entities;
+using ComplianceMonitor.Domain.Enums;
+using IdentityModel.OidcClient;
 using k8s;
 using k8s.Models;
 using Microsoft.Extensions.Logging;
@@ -19,6 +21,10 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
         private readonly k8s.Kubernetes _client;
         private readonly KubernetesClientOptions _options;
         private readonly ILogger<KubernetesClient> _logger;
+        private const string TrivyGroup = "aquasecurity.github.io";
+        private const string TrivyVersion = "v1alpha1";
+        private const string VulnerabilityReportsPlural = "vulnerabilityreports";
+        private const string ConfigAuditReportsPlural = "configauditreports";
 
         public KubernetesClient(IOptions<KubernetesClientOptions> options, ILogger<KubernetesClient> logger)
         {
@@ -273,7 +279,320 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
         {
             return await GetPodsAsync(null, cancellationToken);
         }
+
+        public async Task<IEnumerable<VulnerabilityReportResource>> GetVulnerabilityReportsAsync(
+             string @namespace = null,
+             CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                object reports;
+
+                if (@namespace != null)
+                {
+                    // Get reports for a specific namespace
+                    _logger.LogInformation($"Getting vulnerability reports from namespace: {@namespace}");
+                    reports = await _client.CustomObjects.ListNamespacedCustomObjectAsync(
+                        group: TrivyGroup,
+                        version: TrivyVersion,
+                        namespaceParameter: @namespace,
+                        plural: VulnerabilityReportsPlural,
+                        cancellationToken: cancellationToken
+                    );
+                }
+                else
+                {
+                    // Get reports from all namespaces
+                    _logger.LogInformation("Getting vulnerability reports from all namespaces");
+                    reports = await _client.CustomObjects.ListClusterCustomObjectAsync(
+                        group: TrivyGroup,
+                        version: TrivyVersion,
+                        plural: VulnerabilityReportsPlural,
+                        cancellationToken: cancellationToken
+                    );
+                }
+
+                var result = new List<VulnerabilityReportResource>();
+                var items = ((JsonElement)reports).GetProperty("items");
+
+                foreach (var item in items.EnumerateArray())
+                {
+                    try
+                    {
+                        var report = DeserializeVulnerabilityReport(item);
+                        if (report != null)
+                        {
+                            result.Add(report);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error deserializing vulnerability report");
+                    }
+                }
+
+                _logger.LogInformation($"Found {result.Count} vulnerability reports");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting vulnerability reports from Trivy Operator");
+                return Enumerable.Empty<VulnerabilityReportResource>();
+            }
+        }
+
+        public async Task<VulnerabilityReportResource> GetVulnerabilityReportAsync(
+            string name,
+            string @namespace,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation($"Getting vulnerability report {name} in namespace {@namespace}");
+                var reportObj = await _client.CustomObjects.GetNamespacedCustomObjectAsync(
+                    group: TrivyGroup,
+                    version: TrivyVersion,
+                    namespaceParameter: @namespace,
+                    plural: VulnerabilityReportsPlural,
+                    name: name,
+                    cancellationToken: cancellationToken
+                );
+
+                var reportElement = (JsonElement)reportObj;
+                return DeserializeVulnerabilityReport(reportElement);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error getting vulnerability report {name} in namespace {@namespace}");
+                return null;
+            }
+        }
+
+        public async Task<IEnumerable<ConfigAuditReportResource>> GetConfigAuditReportsAsync(
+            string @namespace = null,
+            CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                object reports;
+
+                if (@namespace != null)
+                {
+                    // Get reports for a specific namespace
+                    _logger.LogInformation($"Getting config audit reports from namespace: {@namespace}");
+                    reports = await _client.CustomObjects.ListNamespacedCustomObjectAsync(
+                        group: TrivyGroup,
+                        version: TrivyVersion,
+                        namespaceParameter: @namespace,
+                        plural: ConfigAuditReportsPlural,
+                        cancellationToken: cancellationToken
+                    );
+                }
+                else
+                {
+                    // Get reports from all namespaces
+                    _logger.LogInformation("Getting config audit reports from all namespaces");
+                    reports = await _client.CustomObjects.ListClusterCustomObjectAsync(
+                        group: TrivyGroup,
+                        version: TrivyVersion,
+                        plural: ConfigAuditReportsPlural,
+                        cancellationToken: cancellationToken
+                    );
+                }
+
+                var result = new List<ConfigAuditReportResource>();
+                var items = ((JsonElement)reports).GetProperty("items");
+
+                foreach (var item in items.EnumerateArray())
+                {
+                    try
+                    {
+                        var report = DeserializeConfigAuditReport(item);
+                        if (report != null)
+                        {
+                            result.Add(report);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error deserializing config audit report");
+                    }
+                }
+
+                _logger.LogInformation($"Found {result.Count} config audit reports");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting config audit reports from Trivy Operator");
+                return Enumerable.Empty<ConfigAuditReportResource>();
+            }
+        }
+
+        private VulnerabilityReportResource DeserializeVulnerabilityReport(JsonElement reportElement)
+        {
+            try
+            {
+                // Extract metadata
+                var metadata = reportElement.GetProperty("metadata");
+                var name = metadata.GetProperty("name").GetString();
+                var ns = metadata.GetProperty("namespace").GetString();
+                var uid = metadata.GetProperty("uid").GetString();
+                DateTime creationTimestamp = DateTime.UtcNow;
+
+                if (metadata.TryGetProperty("creationTimestamp", out var creationTimestampElement))
+                {
+                    DateTime.TryParse(creationTimestampElement.GetString(), out creationTimestamp);
+                }
+
+                // Extract report details
+                var report = reportElement.GetProperty("report");
+                var artifact = report.GetProperty("artifact");
+                var imageName = artifact.GetProperty("repository").GetString();
+                var imageTag = artifact.TryGetProperty("tag", out var tagElement) ? tagElement.GetString() : "latest";
+                var fullImageName = $"{imageName}:{imageTag}";
+
+                // Extract vulnerabilities
+                var vulnerabilities = new List<VulnerabilityItem>();
+                if (report.TryGetProperty("vulnerabilities", out var vulnsElement) && vulnsElement.ValueKind != JsonValueKind.Null)
+                {
+                    foreach (var vulnElement in vulnsElement.EnumerateArray())
+                    {
+                        var vuln = new VulnerabilityItem
+                        {
+                            VulnerabilityID = vulnElement.GetProperty("vulnerabilityID").GetString(),
+                            PkgName = vulnElement.GetProperty("pkgName").GetString(),
+                            InstalledVersion = vulnElement.GetProperty("installedVersion").GetString(),
+                            FixedVersion = vulnElement.TryGetProperty("fixedVersion", out var fixedElement) ?
+                                fixedElement.GetString() : null,
+                            Severity = ParseSeverity(vulnElement.GetProperty("severity").GetString()),
+                            Description = vulnElement.TryGetProperty("description", out var descElement) ?
+                                descElement.GetString() : null
+                        };
+
+                        // Extract CVSS score if available
+                        if (vulnElement.TryGetProperty("cvss", out var cvssElement))
+                        {
+                            // Get the highest score available (v3 preferred over v2)
+                            if (cvssElement.TryGetProperty("v3", out var v3Element) &&
+                                v3Element.TryGetProperty("baseScore", out var baseScoreElement))
+                            {
+                                vuln.CvssScore = baseScoreElement.GetDouble();
+                            }
+                            else if (cvssElement.TryGetProperty("v2", out var v2Element) &&
+                                     v2Element.TryGetProperty("baseScore", out var v2BaseScoreElement))
+                            {
+                                vuln.CvssScore = v2BaseScoreElement.GetDouble();
+                            }
+                        }
+
+                        vulnerabilities.Add(vuln);
+                    }
+                }
+
+                // Create and return the report
+                return new VulnerabilityReportResource
+                {
+                    Name = name,
+                    Namespace = ns,
+                    Uid = uid,
+                    CreationTimestamp = creationTimestamp,
+                    ImageName = fullImageName,
+                    Vulnerabilities = vulnerabilities
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error parsing vulnerability report");
+                throw;
+            }
+        }
+
+        private ConfigAuditReportResource DeserializeConfigAuditReport(JsonElement reportElement)
+        {
+            try
+            {
+                // Extract metadata
+                var metadata = reportElement.GetProperty("metadata");
+                var name = metadata.GetProperty("name").GetString();
+                var ns = metadata.GetProperty("namespace").GetString();
+                var uid = metadata.GetProperty("uid").GetString();
+                DateTime creationTimestamp = DateTime.UtcNow;
+
+                if (metadata.TryGetProperty("creationTimestamp", out var creationTimestampElement))
+                {
+                    DateTime.TryParse(creationTimestampElement.GetString(), out creationTimestamp);
+                }
+
+                // Extract report details
+                var report = reportElement.GetProperty("report");
+                var summary = report.GetProperty("summary");
+
+                int lowCount = 0, mediumCount = 0, highCount = 0, criticalCount = 0;
+
+                if (summary.TryGetProperty("lowCount", out var lowElement))
+                    lowCount = lowElement.GetInt32();
+                if (summary.TryGetProperty("mediumCount", out var mediumElement))
+                    mediumCount = mediumElement.GetInt32();
+                if (summary.TryGetProperty("highCount", out var highElement))
+                    highCount = highElement.GetInt32();
+                if (summary.TryGetProperty("criticalCount", out var criticalElement))
+                    criticalCount = criticalElement.GetInt32();
+
+                // Extract check results
+                var checks = new List<ConfigAuditCheck>();
+                if (report.TryGetProperty("checks", out var checksElement))
+                {
+                    foreach (var checkElement in checksElement.EnumerateArray())
+                    {
+                        var check = new ConfigAuditCheck
+                        {
+                            ID = checkElement.GetProperty("checkID").GetString(),
+                            Title = checkElement.GetProperty("title").GetString(),
+                            Severity = ParseSeverity(checkElement.GetProperty("severity").GetString()),
+                            Category = checkElement.TryGetProperty("category", out var catElement) ?
+                                catElement.GetString() : null,
+                            Description = checkElement.TryGetProperty("description", out var descElement) ?
+                                descElement.GetString() : null,
+                            Success = checkElement.GetProperty("success").GetBoolean()
+                        };
+
+                        checks.Add(check);
+                    }
+                }
+
+                // Create and return the report
+                return new ConfigAuditReportResource
+                {
+                    Name = name,
+                    Namespace = ns,
+                    Uid = uid,
+                    CreationTimestamp = creationTimestamp,
+                    LowCount = lowCount,
+                    MediumCount = mediumCount,
+                    HighCount = highCount,
+                    CriticalCount = criticalCount,
+                    Checks = checks
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error parsing config audit report");
+                throw;
+            }
+        }
+
+        private VulnerabilitySeverity ParseSeverity(string severityStr)
+        {
+            if (Enum.TryParse<VulnerabilitySeverity>(severityStr, true, out var severity))
+            {
+                return severity;
+            }
+            return VulnerabilitySeverity.Unknown;
+        }
     }
+
+}
 
     public class KubernetesClientOptions
     {
@@ -282,4 +601,3 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
         public string KubeconfigPath { get; set; } = "~/.kube/config";
         public bool VerifySsl { get; set; } = true;
     }
-}
