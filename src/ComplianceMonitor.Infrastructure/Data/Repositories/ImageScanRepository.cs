@@ -33,7 +33,7 @@ namespace ComplianceMonitor.Infrastructure.Data.Repositories
                 // Verificar vulnerabilidades duplicadas dentro do próprio resultado
                 foreach (var vulnerability in scanResult.Vulnerabilities.ToList())
                 {
-                    if (!vulnerabilityIds.Add(vulnerability.Id))
+                    if (!vulnerabilityIds.Add(vulnerability.Id.ToString()))
                     {
                         // Encontrou uma duplicata dentro do próprio resultado
                         duplicateVulnerabilities.Add(vulnerability);

@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace ComplianceMonitor.Infrastructure.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialMigration : Migration
+    public partial class InitialPostgreSql : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -15,10 +15,10 @@ namespace ComplianceMonitor.Infrastructure.Migrations
                 name: "ImageScans",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ImageName = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    ScanTime = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Metadata = table.Column<string>(type: "nvarchar(max)", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ImageName = table.Column<string>(type: "varchar(500)", maxLength: 500, nullable: false),
+                    ScanTime = table.Column<DateTime>(type: "timestamp", nullable: false),
+                    Metadata = table.Column<string>(type: "text", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -29,15 +29,15 @@ namespace ComplianceMonitor.Infrastructure.Migrations
                 name: "Policies",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(500)", maxLength: 500, nullable: false),
-                    Severity = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    RuleType = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Parameters = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    IsEnabled = table.Column<bool>(type: "bit", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Name = table.Column<string>(type: "varchar(200)", maxLength: 100, nullable: false),
+                    Description = table.Column<string>(type: "text", maxLength: 500, nullable: false),
+                    Severity = table.Column<string>(type: "text", nullable: false),
+                    RuleType = table.Column<string>(type: "text", nullable: false),
+                    Parameters = table.Column<string>(type: "text", nullable: false),
+                    IsEnabled = table.Column<bool>(type: "boolean", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -48,15 +48,15 @@ namespace ComplianceMonitor.Infrastructure.Migrations
                 name: "Resources",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Kind = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    Name = table.Column<string>(type: "nvarchar(253)", maxLength: 253, nullable: false),
-                    Namespace = table.Column<string>(type: "nvarchar(253)", maxLength: 253, nullable: false),
-                    Uid = table.Column<string>(type: "nvarchar(36)", maxLength: 36, nullable: false),
-                    Labels = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Annotations = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Spec = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    Kind = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Name = table.Column<string>(type: "character varying(253)", maxLength: 253, nullable: false),
+                    Namespace = table.Column<string>(type: "character varying(253)", maxLength: 253, nullable: false),
+                    Uid = table.Column<string>(type: "character varying(36)", maxLength: 36, nullable: false),
+                    Labels = table.Column<string>(type: "text", nullable: false),
+                    Annotations = table.Column<string>(type: "text", nullable: false),
+                    Spec = table.Column<string>(type: "text", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -67,15 +67,15 @@ namespace ComplianceMonitor.Infrastructure.Migrations
                 name: "Vulnerabilities",
                 columns: table => new
                 {
-                    Id = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    ImageScanResultId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    PackageName = table.Column<string>(type: "nvarchar(200)", maxLength: 200, nullable: false),
-                    InstalledVersion = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    FixedVersion = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    Severity = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Description = table.Column<string>(type: "nvarchar(2000)", maxLength: 2000, nullable: false),
-                    References = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    CvssScore = table.Column<double>(type: "float", nullable: true)
+                    Id = table.Column<Guid>(type: "uuid", maxLength: 100, nullable: false),
+                    ImageScanResultId = table.Column<Guid>(type: "uuid", nullable: false),
+                    PackageName = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    InstalledVersion = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    FixedVersion = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    Severity = table.Column<string>(type: "text", nullable: false),
+                    Description = table.Column<string>(type: "character varying(2000)", maxLength: 2000, nullable: false),
+                    References = table.Column<string>(type: "text", nullable: false),
+                    CvssScore = table.Column<double>(type: "double precision", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -92,12 +92,12 @@ namespace ComplianceMonitor.Infrastructure.Migrations
                 name: "ComplianceChecks",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    PolicyId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ResourceId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    Status = table.Column<string>(type: "nvarchar(450)", nullable: false),
-                    Details = table.Column<string>(type: "nvarchar(max)", nullable: false),
-                    Timestamp = table.Column<DateTime>(type: "datetime2", nullable: false)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    PolicyId = table.Column<Guid>(type: "uuid", nullable: false),
+                    ResourceId = table.Column<Guid>(type: "uuid", nullable: false),
+                    Status = table.Column<string>(type: "text", nullable: false),
+                    Details = table.Column<string>(type: "text", nullable: false),
+                    Timestamp = table.Column<DateTime>(type: "timestamp", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -120,12 +120,12 @@ namespace ComplianceMonitor.Infrastructure.Migrations
                 name: "Alerts",
                 columns: table => new
                 {
-                    Id = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    ComplianceCheckId = table.Column<Guid>(type: "uniqueidentifier", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "datetime2", nullable: false),
-                    Acknowledged = table.Column<bool>(type: "bit", nullable: false),
-                    AcknowledgedBy = table.Column<string>(type: "nvarchar(100)", maxLength: 100, nullable: false),
-                    AcknowledgedAt = table.Column<DateTime>(type: "datetime2", nullable: true)
+                    Id = table.Column<Guid>(type: "uuid", nullable: false),
+                    ComplianceCheckId = table.Column<Guid>(type: "uuid", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "timestamp", nullable: false),
+                    Acknowledged = table.Column<bool>(type: "boolean", nullable: false),
+                    AcknowledgedBy = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
+                    AcknowledgedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
                 },
                 constraints: table =>
                 {

@@ -23,10 +23,40 @@ namespace ComplianceMonitor.Infrastructure.Data
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            base.OnModelCreating(modelBuilder);
-
             // Apply configurations
             modelBuilder.ApplyConfigurationsFromAssembly(typeof(ComplianceDbContext).Assembly);
+
+
+            if (typeof(Policy).GetProperty("Id").PropertyType == typeof(Guid))
+                modelBuilder.Entity<Policy>().Property(e => e.Id).HasColumnType("uuid");
+
+            if (typeof(KubernetesResource).GetProperty("Id").PropertyType == typeof(Guid))
+                modelBuilder.Entity<KubernetesResource>().Property(e => e.Id).HasColumnType("uuid");
+
+            if (typeof(ComplianceCheck).GetProperty("Id").PropertyType == typeof(Guid))
+                modelBuilder.Entity<ComplianceCheck>().Property(e => e.Id).HasColumnType("uuid");
+
+            if (typeof(Alert).GetProperty("Id").PropertyType == typeof(Guid))
+                modelBuilder.Entity<Alert>().Property(e => e.Id).HasColumnType("uuid");
+
+            if (typeof(ImageScanResult).GetProperty("Id").PropertyType == typeof(Guid))
+                modelBuilder.Entity<ImageScanResult>().Property(e => e.Id).HasColumnType("uuid");
+
+            // Para Vulnerability, se o Id for string, use texto em vez de uuid
+            if (typeof(Vulnerability).GetProperty("Id").PropertyType == typeof(string))
+                modelBuilder.Entity<Vulnerability>().Property(e => e.Id).HasColumnType("varchar(100)");
+            else if (typeof(Vulnerability).GetProperty("Id").PropertyType == typeof(Guid))
+                modelBuilder.Entity<Vulnerability>().Property(e => e.Id).HasColumnType("uuid");
+
+            // Configure string columns to use text or varchar instead of nvarchar
+            modelBuilder.Entity<Policy>().Property(e => e.Name).HasColumnType("varchar(200)");
+            modelBuilder.Entity<Policy>().Property(e => e.Description).HasColumnType("text");
+            modelBuilder.Entity<ImageScanResult>().Property(e => e.ImageName).HasColumnType("varchar(500)");
+
+            // Configure date/time columns to use timestamp instead of datetime2
+            modelBuilder.Entity<ImageScanResult>().Property(e => e.ScanTime).HasColumnType("timestamp");
+            modelBuilder.Entity<Alert>().Property(e => e.CreatedAt).HasColumnType("timestamp");
+            modelBuilder.Entity<ComplianceCheck>().Property(e => e.Timestamp).HasColumnType("timestamp");
 
             // Configure ValueConverters for JsonSerializable properties
             var jsonOptions = new JsonSerializerOptions
@@ -78,36 +108,43 @@ namespace ComplianceMonitor.Infrastructure.Data
             modelBuilder.Entity<Policy>()
                 .Property(p => p.Parameters)
                 .HasConversion(dictionaryConverter)
+                .HasColumnType("text")
                 .Metadata.SetValueComparer(dictionaryComparer);
 
             modelBuilder.Entity<KubernetesResource>()
                 .Property(r => r.Labels)
                 .HasConversion(stringDictionaryConverter)
+                .HasColumnType("text")
                 .Metadata.SetValueComparer(stringDictionaryComparer);
 
             modelBuilder.Entity<KubernetesResource>()
                 .Property(r => r.Annotations)
                 .HasConversion(stringDictionaryConverter)
+                .HasColumnType("text")
                 .Metadata.SetValueComparer(stringDictionaryComparer);
 
             modelBuilder.Entity<KubernetesResource>()
                 .Property(r => r.Spec)
                 .HasConversion(dictionaryConverter)
+                .HasColumnType("text")
                 .Metadata.SetValueComparer(dictionaryComparer);
 
             modelBuilder.Entity<ComplianceCheck>()
                 .Property(c => c.Details)
                 .HasConversion(dictionaryConverter)
+                .HasColumnType("text")
                 .Metadata.SetValueComparer(dictionaryComparer);
 
             modelBuilder.Entity<ImageScanResult>()
                 .Property(i => i.Metadata)
                 .HasConversion(dictionaryConverter)
+                .HasColumnType("text")
                 .Metadata.SetValueComparer(dictionaryComparer);
 
             modelBuilder.Entity<Vulnerability>()
                 .Property(v => v.References)
                 .HasConversion(stringListConverter)
+                .HasColumnType("text")
                 .Metadata.SetValueComparer(stringListComparer);
         }
     }

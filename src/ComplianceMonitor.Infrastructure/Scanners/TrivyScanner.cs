@@ -419,7 +419,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
                                         // Create Vulnerability object
                                         vulnerabilities.Add(new Vulnerability(
-                                            id: vuln.GetProperty("VulnerabilityID").GetString(),
+                                            id: vuln.GetProperty("VulnerabilityID").GetGuid(),
                                             packageName: vuln.GetProperty("PkgName").GetString(),
                                             installedVersion: vuln.GetProperty("InstalledVersion").GetString(),
                                             fixedVersion: vuln.TryGetProperty("FixedVersion", out var fixedVersionElement) ?
