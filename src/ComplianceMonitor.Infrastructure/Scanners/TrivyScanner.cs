@@ -397,17 +397,31 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                                 {
                                     try
                                     {
-                                        // Map severity
-                                        var severityStr = vuln.GetProperty("Severity").GetString()?.ToUpper() ?? "UNKNOWN";
+                                        if (!vuln.TryGetProperty("VulnerabilityID", out var vulnIdElement) ||
+                                            !vuln.TryGetProperty("PkgName", out var pkgNameElement) ||
+                                            !vuln.TryGetProperty("InstalledVersion", out var installedVersionElement) ||
+                                            !vuln.TryGetProperty("Severity", out var severityElement))
+                                        {
+                                            _logger.LogWarning("Vulnerability missing required fields, skipping");
+                                            continue;
+                                        }
+
+                                        var vulnId = vulnIdElement.GetString();
+                                        if (string.IsNullOrEmpty(vulnId))
+                                        {
+                                            _logger.LogWarning("Vulnerability ID is null or empty, skipping");
+                                            continue;
+                                        }
+
+                                        var severityStr = severityElement.GetString()?.ToUpper() ?? "UNKNOWN";
                                         VulnerabilitySeverity severity;
 
-                                        if (!Enum.TryParse(severityStr,true, out severity))
+                                        if (!Enum.TryParse(severityStr, true, out severity))
                                         {
                                             _logger.LogWarning($"Unknown severity: {severityStr}, using Unknown");
                                             severity = VulnerabilitySeverity.Unknown;
                                         }
 
-                                        // Extract references
                                         var references = new List<string>();
                                         if (vuln.TryGetProperty("References", out var refsElement))
                                         {
@@ -417,11 +431,16 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                                             }
                                         }
 
-                                        // Create Vulnerability object
+                                        Guid id;
+                                        if (!Guid.TryParse(vulnId, out id))
+                                        {
+                                            id = CreateDeterministicGuid(vulnId);
+                                        }
+
                                         vulnerabilities.Add(new Vulnerability(
-                                            id: vuln.GetProperty("VulnerabilityID").GetGuid(),
-                                            packageName: vuln.GetProperty("PkgName").GetString(),
-                                            installedVersion: vuln.GetProperty("InstalledVersion").GetString(),
+                                            id: id,
+                                            packageName: pkgNameElement.GetString(),
+                                            installedVersion: installedVersionElement.GetString(),
                                             fixedVersion: vuln.TryGetProperty("FixedVersion", out var fixedVersionElement) ?
                                               fixedVersionElement.GetString() ?? string.Empty : string.Empty,
                                             severity: severity,
@@ -445,6 +464,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                     }
                 }
 
+                _logger.LogInformation($"Found {vulnerabilities.Count} vulnerabilities for {imageName}");
                 return new ImageScanResult(
                     imageName,
                     vulnerabilities,
@@ -461,6 +481,20 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                     DateTime.UtcNow,
                     new Dictionary<string, object> { ["error"] = $"Error parsing Trivy results: {ex.Message}" }
                 );
+            }
+        }
+
+        private Guid CreateDeterministicGuid(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                throw new ArgumentException("Input cannot be null or empty", nameof(input));
+
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            {
+                byte[] inputBytes = System.Text.Encoding.UTF8.GetBytes(input);
+                byte[] hashBytes = md5.ComputeHash(inputBytes);
+
+                return new Guid(hashBytes);
             }
         }
 

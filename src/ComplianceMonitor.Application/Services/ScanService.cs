@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using AutoMapper;
@@ -264,97 +265,314 @@ namespace ComplianceMonitor.Application.Services
 
         private async Task<BatchScanResultDto> ScanAllImagesViaDirectScanAsync(bool force, CancellationToken cancellationToken)
         {
-            // Get all unique running images
-            var pods = await _kubernetesClient.GetAllPodsAsync(cancellationToken);
-            _logger.LogInformation("Retrieved {PodCount} pods from the cluster", pods.Count());
-
-            // Extract unique images
-            var images = new HashSet<string>();
-            foreach (var pod in pods)
+            try
             {
-                var podImages = ExtractImagesFromPod(pod);
-                foreach (var image in podImages)
+                // Get all unique running images
+                _logger.LogInformation("Retrieving all pods from the cluster");
+                var pods = await _kubernetesClient.GetAllPodsAsync(cancellationToken);
+                _logger.LogInformation("Retrieved {PodCount} pods from the cluster", pods.Count());
+
+                // Extract unique images com logging melhorado
+                var images = new HashSet<string>();
+                int podsWithImages = 0;
+                int podsWithoutImages = 0;
+                int totalImageReferences = 0;
+
+                foreach (var pod in pods)
                 {
-                    images.Add(image);
+                    try
+                    {
+                        // Verificar diretamente os containers na estrutura raw do pod
+                        var podImages = new HashSet<string>();
+
+                        // Para pods do Kubernetes/OpenShift, a estrutura de um pod é bastante específica
+                        // Verificamos vários possíveis locais para imagens de contêiner
+
+                        // 1. Verificar containers na spec direta
+                        if (pod.Spec != null)
+                        {
+                            // Procurar em spec.containers
+                            if (pod.Spec.TryGetValue("containers", out var containersObj) &&
+                                containersObj is List<object> containers)
+                            {
+                                foreach (var containerObj in containers)
+                                {
+                                    if (containerObj is Dictionary<string, object> container &&
+                                        container.TryGetValue("image", out var imageObj) &&
+                                        imageObj is string image && !string.IsNullOrEmpty(image))
+                                    {
+                                        podImages.Add(image);
+                                        _logger.LogDebug($"Found image in pod {pod.Name} containers: {image}");
+                                    }
+                                }
+                            }
+
+                            // Procurar em spec.initContainers
+                            if (pod.Spec.TryGetValue("initContainers", out var initContainersObj) &&
+                                initContainersObj is List<object> initContainers)
+                            {
+                                foreach (var containerObj in initContainers)
+                                {
+                                    if (containerObj is Dictionary<string, object> container &&
+                                        container.TryGetValue("image", out var imageObj) &&
+                                        imageObj is string image && !string.IsNullOrEmpty(image))
+                                    {
+                                        podImages.Add(image);
+                                        _logger.LogDebug($"Found image in pod {pod.Name} initContainers: {image}");
+                                    }
+                                }
+                            }
+
+                            // Procurar em spec.spec.containers
+                            if (pod.Spec.TryGetValue("spec", out var specObj) &&
+                                specObj is Dictionary<string, object> spec)
+                            {
+                                if (spec.TryGetValue("containers", out var specContainersObj) &&
+                                    specContainersObj is List<object> specContainers)
+                                {
+                                    foreach (var containerObj in specContainers)
+                                    {
+                                        if (containerObj is Dictionary<string, object> container &&
+                                            container.TryGetValue("image", out var imageObj) &&
+                                            imageObj is string image && !string.IsNullOrEmpty(image))
+                                        {
+                                            podImages.Add(image);
+                                            _logger.LogDebug($"Found image in pod {pod.Name} spec.containers: {image}");
+                                        }
+                                    }
+                                }
+
+                                // Procurar em spec.spec.initContainers
+                                if (spec.TryGetValue("initContainers", out var specInitContainersObj) &&
+                                    specInitContainersObj is List<object> specInitContainers)
+                                {
+                                    foreach (var containerObj in specInitContainers)
+                                    {
+                                        if (containerObj is Dictionary<string, object> container &&
+                                            container.TryGetValue("image", out var imageObj) &&
+                                            imageObj is string image && !string.IsNullOrEmpty(image))
+                                        {
+                                            podImages.Add(image);
+                                            _logger.LogDebug($"Found image in pod {pod.Name} spec.initContainers: {image}");
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Procurar em spec.status.containerStatuses
+                            if (pod.Spec.TryGetValue("status", out var statusObj) &&
+                                statusObj is Dictionary<string, object> status)
+                            {
+                                if (status.TryGetValue("containerStatuses", out var containerStatusesObj) &&
+                                    containerStatusesObj is List<object> containerStatuses)
+                                {
+                                    foreach (var statusOb in containerStatuses)
+                                    {
+                                        if (statusOb is Dictionary<string, object> containerStatus &&
+                                            containerStatus.TryGetValue("image", out var imageObj) &&
+                                            imageObj is string image && !string.IsNullOrEmpty(image))
+                                        {
+                                            podImages.Add(image);
+                                            _logger.LogDebug($"Found image in pod {pod.Name} status.containerStatuses: {image}");
+                                        }
+                                    }
+                                }
+
+                                // Procurar em spec.status.initContainerStatuses
+                                if (status.TryGetValue("initContainerStatuses", out var initContainerStatusesObj) &&
+                                    initContainerStatusesObj is List<object> initContainerStatuses)
+                                {
+                                    foreach (var statusOb in initContainerStatuses)
+                                    {
+                                        if (statusOb is Dictionary<string, object> containerStatus &&
+                                            containerStatus.TryGetValue("image", out var imageObj) &&
+                                            imageObj is string image && !string.IsNullOrEmpty(image))
+                                        {
+                                            podImages.Add(image);
+                                            _logger.LogDebug($"Found image in pod {pod.Name} status.initContainerStatuses: {image}");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            _logger.LogWarning($"Pod {pod.Name} in namespace {pod.Namespace} has no spec data");
+                        }
+
+                        // Adicionar todas as imagens únicas do pod ao conjunto global
+                        totalImageReferences += podImages.Count;
+                        foreach (var image in podImages)
+                        {
+                            images.Add(image);
+                        }
+
+                        // Contar pods com e sem imagens
+                        if (podImages.Count > 0)
+                        {
+                            podsWithImages++;
+                            _logger.LogDebug($"Pod {pod.Name} in namespace {pod.Namespace} has {podImages.Count} images");
+                        }
+                        else
+                        {
+                            podsWithoutImages++;
+                            _logger.LogWarning($"No images found in pod {pod.Name} in namespace {pod.Namespace}");
+
+                            // Se nenhuma imagem foi encontrada, fazer log das chaves disponíveis para depuração
+                            if (pod.Spec != null)
+                            {
+                                _logger.LogDebug($"Pod {pod.Name} spec keys: {string.Join(", ", pod.Spec.Keys)}");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error extracting images from pod {pod.Name}");
+                    }
                 }
-            }
 
-            var imageList = images.ToList();
-            _logger.LogInformation("Found {ImageCount} unique running images", imageList.Count);
+                _logger.LogInformation($"Pods summary: pods with images: {podsWithImages}, pods without images: {podsWithoutImages}");
+                _logger.LogInformation($"Image summary: found {images.Count} unique images from {totalImageReferences} total references");
 
-            if (!imageList.Any())
-            {
-                _logger.LogWarning("No images found to scan");
+                // Tratar caso em que não há imagens
+                var imageList = images.ToList();
+                if (imageList.Count == 0)
+                {
+                    // Se estamos em ambiente de desenvolvimento e a opção está habilitada,
+                    // usamos as imagens padrão configuradas
+                    if (_options.AddDefaultImagesInDev)
+                    {
+                        _logger.LogWarning("No images found in cluster. Using default development images for testing");
+
+                        if (_options.DefaultImages != null && _options.DefaultImages.Count > 0)
+                        {
+                            foreach (var defaultImage in _options.DefaultImages)
+                            {
+                                if (!string.IsNullOrEmpty(defaultImage))
+                                {
+                                    imageList.Add(defaultImage);
+                                    _logger.LogInformation($"Added default development image: {defaultImage}");
+                                }
+                            }
+                        }
+                        else
+                        {
+                            // Se nenhuma imagem foi configurada, adicionar algumas imagens conhecidas
+                            imageList.Add("nginx:latest");
+                            imageList.Add("registry.access.redhat.com/ubi8/ubi-minimal:latest");
+                            _logger.LogInformation("Added fallback development images: nginx:latest, ubi8/ubi-minimal:latest");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No images found in cluster and AddDefaultImagesInDev is not enabled");
+                        return new BatchScanResultDto
+                        {
+                            Status = "completed",
+                            ScannedImages = 0,
+                            VulnerabilityCounts = new Dictionary<string, int>(),
+                            ImageList = new List<string>()
+                        };
+                    }
+                }
+
+                // Log do resultado final
+                _logger.LogInformation("Found {ImageCount} unique images to scan", imageList.Count);
+
+                // Log das primeiras 10 imagens (para depuração)
+                for (int i = 0; i < Math.Min(10, imageList.Count); i++)
+                {
+                    _logger.LogInformation("Image {Index}: {Image}", i + 1, imageList[i]);
+                }
+
+                // Scan each image
+                var results = new Dictionary<string, ImageScanResult>();
+                int successfulScans = 0;
+                int failedScans = 0;
+
+                foreach (var image in imageList)
+                {
+                    try
+                    {
+                        _logger.LogInformation("Scanning image: {Image}", image);
+
+                        // Verificar primeiro se já existe um scan recente que não precisa ser forçado
+                        if (!force)
+                        {
+                            var existingScan = await _scanRepository.GetLatestByImageNameAsync(image, cancellationToken);
+                            if (existingScan != null && IsScanRecent(existingScan))
+                            {
+                                _logger.LogInformation($"Using existing recent scan for {image}");
+                                results[image] = existingScan;
+                                successfulScans++;
+                                continue;
+                            }
+                        }
+
+                        // Se não existir scan recente ou estiver forçando, executa novo scan
+                        var scanResult = await _directScanner.ScanImageAsync(image, cancellationToken);
+                        if (scanResult != null)
+                        {
+                            results[image] = scanResult;
+                            await _scanRepository.AddAsync(scanResult, cancellationToken);
+                            successfulScans++;
+                            _logger.LogInformation($"Successfully scanned image: {image}");
+                        }
+                        else
+                        {
+                            failedScans++;
+                            _logger.LogWarning($"Scan for image {image} returned null result");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failedScans++;
+                        _logger.LogError(ex, "Error scanning image {Image}", image);
+                    }
+
+                    _logger.LogInformation("Progress: {Successful}/{Total} completed successfully, {Failed} failures",
+                        successfulScans, imageList.Count, failedScans);
+                }
+
+                _logger.LogInformation("Scan completed. Total: {Total} images, Success: {Successful}, Failures: {Failed}",
+                    imageList.Count, successfulScans, failedScans);
+
+                // Prepare vulnerability counts
+                var vulnerabilityCounts = new Dictionary<string, int>();
+                foreach (var scanResult in results.Values)
+                {
+                    var counts = scanResult.CountBySeverity();
+                    foreach (var kvp in counts)
+                    {
+                        var severityKey = kvp.Key.ToString();
+                        if (!vulnerabilityCounts.ContainsKey(severityKey))
+                        {
+                            vulnerabilityCounts[severityKey] = 0;
+                        }
+                        vulnerabilityCounts[severityKey] += kvp.Value;
+                    }
+                }
+
                 return new BatchScanResultDto
                 {
                     Status = "completed",
+                    ScannedImages = successfulScans,
+                    VulnerabilityCounts = vulnerabilityCounts,
+                    ImageList = results.Keys.ToList()
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unhandled error in batch scan process");
+                return new BatchScanResultDto
+                {
+                    Status = "error",
+                    Error = $"Unhandled error: {ex.Message}",
                     ScannedImages = 0,
                     VulnerabilityCounts = new Dictionary<string, int>(),
                     ImageList = new List<string>()
                 };
             }
-
-            // Log the first 5 images (for debugging)
-            for (int i = 0; i < Math.Min(5, imageList.Count); i++)
-            {
-                _logger.LogInformation("Image {Index}: {Image}", i + 1, imageList[i]);
-            }
-
-            // Scan each image
-            var results = new Dictionary<string, ImageScanResult>();
-            int successfulScans = 0;
-            int failedScans = 0;
-
-            foreach (var image in imageList)
-            {
-                try
-                {
-                    _logger.LogInformation("Scanning image: {Image}", image);
-                    var scanResult = await _directScanner.ScanImageAsync(image, cancellationToken);
-                    if (scanResult != null)
-                    {
-                        results[image] = scanResult;
-                        await _scanRepository.AddAsync(scanResult, cancellationToken);
-                        successfulScans++;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    failedScans++;
-                    _logger.LogError(ex, "Error scanning image {Image}", image);
-                    // Continue to the next image
-                }
-
-                _logger.LogInformation("Progress: {Successful}/{Total} completed successfully, {Failed} failures",
-                    successfulScans, imageList.Count, failedScans);
-            }
-
-            _logger.LogInformation("Scan completed. Total: {Total} images, Success: {Successful}, Failures: {Failed}",
-                imageList.Count, successfulScans, failedScans);
-
-            // Prepare vulnerability counts
-            var vulnerabilityCounts = new Dictionary<string, int>();
-            foreach (var scanResult in results.Values)
-            {
-                var counts = scanResult.CountBySeverity();
-                foreach (var kvp in counts)
-                {
-                    var severityKey = kvp.Key.ToString();
-                    if (!vulnerabilityCounts.ContainsKey(severityKey))
-                    {
-                        vulnerabilityCounts[severityKey] = 0;
-                    }
-                    vulnerabilityCounts[severityKey] += kvp.Value;
-                }
-            }
-
-            return new BatchScanResultDto
-            {
-                Status = "completed",
-                ScannedImages = successfulScans,
-                VulnerabilityCounts = vulnerabilityCounts,
-                ImageList = results.Keys.ToList()
-            };
         }
 
         public async Task<NamespaceScanSummaryDto> GetNamespaceVulnerabilitiesAsync(string @namespace, CancellationToken cancellationToken = default)
@@ -641,45 +859,108 @@ namespace ComplianceMonitor.Application.Services
 
             try
             {
-                // Extract images from status (running containers)
-                if (pod.Spec.TryGetValue("status", out var statusObj) && statusObj is Dictionary<string, object> status)
-                {
-                    if (status.TryGetValue("containerStatuses", out var containerStatusesObj) &&
-                        containerStatusesObj is List<object> containerStatuses)
-                    {
-                        foreach (var containerStatusObj in containerStatuses)
-                        {
-                            if (containerStatusObj is Dictionary<string, object> containerStatus &&
-                                containerStatus.TryGetValue("image", out var imageObj) &&
-                                imageObj is string image)
-                            {
-                                images.Add(image);
-                            }
-                        }
-                    }
-                }
+                _logger.LogDebug($"Extracting images from pod: {pod.Name}");
 
-                // Extract images from spec (defined containers)
-                if (pod.Spec.TryGetValue("spec", out var specObj) && specObj is Dictionary<string, object> spec)
+                if (pod.Spec != null)
                 {
-                    if (spec.TryGetValue("containers", out var containersObj) &&
+                    if (pod.Spec.TryGetValue("containers", out var containersObj) &&
                         containersObj is List<object> containers)
                     {
                         foreach (var containerObj in containers)
                         {
                             if (containerObj is Dictionary<string, object> container &&
                                 container.TryGetValue("image", out var imageObj) &&
-                                imageObj is string image)
+                                imageObj is string image && !string.IsNullOrEmpty(image))
                             {
                                 images.Add(image);
+                                _logger.LogDebug($"Found image in spec.containers: {image}");
+                            }
+                        }
+                    }
+
+                    if (pod.Spec.TryGetValue("spec", out var specObj) &&
+                        specObj is Dictionary<string, object> spec)
+                    {
+                        if (spec.TryGetValue("containers", out var specContainersObj) &&
+                            specContainersObj is List<object> specContainers)
+                        {
+                            foreach (var containerObj in specContainers)
+                            {
+                                if (containerObj is Dictionary<string, object> container &&
+                                    container.TryGetValue("image", out var imageObj) &&
+                                    imageObj is string image && !string.IsNullOrEmpty(image))
+                                {
+                                    images.Add(image);
+                                    _logger.LogDebug($"Found image in spec.spec.containers: {image}");
+                                }
+                            }
+                        }
+
+                        if (spec.TryGetValue("initContainers", out var initContainersObj) &&
+                            initContainersObj is List<object> initContainers)
+                        {
+                            foreach (var containerObj in initContainers)
+                            {
+                                if (containerObj is Dictionary<string, object> container &&
+                                    container.TryGetValue("image", out var imageObj) &&
+                                    imageObj is string image && !string.IsNullOrEmpty(image))
+                                {
+                                    images.Add(image);
+                                    _logger.LogDebug($"Found image in spec.spec.initContainers: {image}");
+                                }
+                            }
+                        }
+                    }
+
+                    if (pod.Spec.TryGetValue("status", out var statusObj) &&
+                        statusObj is Dictionary<string, object> status)
+                    {
+                        if (status.TryGetValue("containerStatuses", out var containerStatusesObj) &&
+                            containerStatusesObj is List<object> containerStatuses)
+                        {
+                            foreach (var containerStatusObj in containerStatuses)
+                            {
+                                if (containerStatusObj is Dictionary<string, object> containerStatus &&
+                                    containerStatus.TryGetValue("image", out var imageObj) &&
+                                    imageObj is string image && !string.IsNullOrEmpty(image))
+                                {
+                                    images.Add(image);
+                                    _logger.LogDebug($"Found image in status.containerStatuses: {image}");
+                                }
+                            }
+                        }
+
+                        if (status.TryGetValue("initContainerStatuses", out var initContainerStatusesObj) &&
+                            initContainerStatusesObj is List<object> initContainerStatuses)
+                        {
+                            foreach (var containerStatusObj in initContainerStatuses)
+                            {
+                                if (containerStatusObj is Dictionary<string, object> containerStatus &&
+                                    containerStatus.TryGetValue("image", out var imageObj) &&
+                                    imageObj is string image && !string.IsNullOrEmpty(image))
+                                {
+                                    images.Add(image);
+                                    _logger.LogDebug($"Found image in status.initContainerStatuses: {image}");
+                                }
                             }
                         }
                     }
                 }
+
+                if (images.Count == 0)
+                {
+                    _logger.LogWarning($"No images found in pod {pod.Name} (namespace: {pod.Namespace})");
+
+                    _logger.LogDebug($"Pod structure: {JsonSerializer.Serialize(pod.Spec)}");
+                }
+                else
+                {
+                    _logger.LogDebug($"Extracted {images.Count} images from pod {pod.Name}");
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error extracting images from pod {PodName}", pod.Name);
+                _logger.LogError(ex, $"Error extracting images from pod {pod.Name}");
             }
 
             return images;
@@ -712,5 +993,23 @@ namespace ComplianceMonitor.Application.Services
     {
         public int ScanIntervalHours { get; set; } = 24;
         public bool UseOperatorScanner { get; set; } = true;
+
+        /// <summary>
+        /// Adiciona imagens padrão de teste quando nenhuma imagem é encontrada no cluster
+        /// Esta opção deve ser usada apenas em ambiente de desenvolvimento
+        /// </summary>
+        public bool AddDefaultImagesInDev { get; set; } = false;
+
+        /// <summary>
+        /// Lista de imagens padrão para escanear quando AddDefaultImagesInDev é true
+        /// </summary>
+        public List<string> DefaultImages { get; set; } = new List<string>
+    {
+        "nginx:latest",
+        "registry.access.redhat.com/ubi8/ubi-minimal:latest",
+        "quay.io/centos/centos:stream8",
+        "mcr.microsoft.com/dotnet/aspnet:8.0"
+    };
     }
+
 }

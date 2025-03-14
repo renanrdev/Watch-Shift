@@ -49,7 +49,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
 
             if (!string.IsNullOrEmpty(_options.ApiUrl) && !string.IsNullOrEmpty(_options.Token))
             {
-                // Method 1: Use API URL and token
                 _logger.LogInformation("Configuring Kubernetes client with API URL and token");
                 config = new KubernetesClientConfiguration
                 {
@@ -60,13 +59,11 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
             }
             else if (File.Exists(_options.KubeconfigPath))
             {
-                // Method 2: Use kubeconfig file
                 _logger.LogInformation($"Configuring Kubernetes client with kubeconfig: {_options.KubeconfigPath}");
                 config = KubernetesClientConfiguration.BuildConfigFromConfigFile(_options.KubeconfigPath);
             }
             else
             {
-                // Method 3: Try in-cluster configuration
                 _logger.LogInformation("Trying in-cluster configuration");
                 config = KubernetesClientConfiguration.InClusterConfig();
             }
@@ -160,7 +157,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                         }
                     }
 
-                    // Convert the JsonElement to a Dictionary<string, object>
                     var spec = JsonSerializer.Deserialize<Dictionary<string, object>>(item.ToString());
 
                     result.Add(new KubernetesResource(
@@ -207,7 +203,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                 {
                     var spec = new Dictionary<string, object>();
 
-                    // Add container statuses
                     var containerStatuses = new List<Dictionary<string, object>>();
                     if (pod.Status?.ContainerStatuses != null)
                     {
@@ -228,7 +223,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                         }
                     }
 
-                    // Add containers from spec
                     var containers = new List<Dictionary<string, object>>();
                     if (pod.Spec?.Containers != null)
                     {
@@ -277,7 +271,181 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
 
         public async Task<IEnumerable<KubernetesResource>> GetAllPodsAsync(CancellationToken cancellationToken = default)
         {
-            return await GetPodsAsync(null, cancellationToken);
+            try
+            {
+                _logger.LogInformation("Getting pods from all namespaces");
+                var podList = await _client.CoreV1.ListPodForAllNamespacesAsync(
+                    cancellationToken: cancellationToken
+                );
+
+                var result = new List<KubernetesResource>();
+                foreach (var pod in podList.Items)
+                {
+                    try
+                    {
+                        // Debug para os primeiros 5 pods
+                        if (result.Count < 5)
+                        {
+                            _logger.LogDebug($"Processing pod: {pod.Metadata.Name} in namespace {pod.Metadata.NamespaceProperty}");
+
+                            if (pod.Spec?.Containers != null)
+                            {
+                                foreach (var container in pod.Spec.Containers)
+                                {
+                                    _logger.LogDebug($"Container {container.Name} has image: {container.Image}");
+                                }
+                            }
+
+                            if (pod.Status?.ContainerStatuses != null)
+                            {
+                                foreach (var status in pod.Status.ContainerStatuses)
+                                {
+                                    _logger.LogDebug($"Container status for {status.Name}, image: {status.Image}");
+                                }
+                            }
+                        }
+
+                        // Mapear o pod para um recurso Kubernetes
+                        var resource = MapPodToResource(pod);
+                        result.Add(resource);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, $"Error processing pod {pod.Metadata.Name}");
+                    }
+                }
+
+                _logger.LogInformation($"Found {result.Count} pods");
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting pods");
+                return Enumerable.Empty<KubernetesResource>();
+            }
+        }
+
+        private KubernetesResource MapPodToResource(V1Pod pod)
+        {
+            // Criar objetos vazios para evitar null references
+            var labels = pod.Metadata.Labels != null
+                ? pod.Metadata.Labels.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                : new Dictionary<string, string>();
+
+            var annotations = pod.Metadata.Annotations != null
+                ? pod.Metadata.Annotations.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                : new Dictionary<string, string>();
+
+            // Criar spec como um dicionário hierárquico
+            var spec = new Dictionary<string, object>();
+
+            // 1. Adicionar diretamente os containers e initContainers para facilidade de acesso
+
+            // Containers regulares
+            var containers = new List<Dictionary<string, object>>();
+            if (pod.Spec?.Containers != null)
+            {
+                foreach (var container in pod.Spec.Containers)
+                {
+                    var containerDict = new Dictionary<string, object>
+                    {
+                        ["name"] = container.Name,
+                        ["image"] = container.Image ?? string.Empty
+                    };
+
+                    // Adicionar outros campos úteis
+                    if (container.Ports != null)
+                    {
+                        containerDict["ports"] = container.Ports.Select(p => new { p.ContainerPort, p.Protocol }).ToList();
+                    }
+
+                    containers.Add(containerDict);
+                }
+            }
+            spec["containers"] = containers;
+
+            // InitContainers
+            var initContainers = new List<Dictionary<string, object>>();
+            if (pod.Spec?.InitContainers != null)
+            {
+                foreach (var container in pod.Spec.InitContainers)
+                {
+                    initContainers.Add(new Dictionary<string, object>
+                    {
+                        ["name"] = container.Name,
+                        ["image"] = container.Image ?? string.Empty
+                    });
+                }
+            }
+            spec["initContainers"] = initContainers;
+
+            // 2. Adicionar spec como um subobject para preservar a estrutura original
+            spec["spec"] = new Dictionary<string, object>
+            {
+                ["containers"] = containers,
+                ["initContainers"] = initContainers,
+                ["nodeName"] = pod.Spec?.NodeName
+            };
+
+            // 3. Adicionar status
+            var status = new Dictionary<string, object>
+            {
+                ["phase"] = pod.Status?.Phase
+            };
+
+            // ContainerStatuses
+            var containerStatuses = new List<Dictionary<string, object>>();
+            if (pod.Status?.ContainerStatuses != null)
+            {
+                foreach (var containerStatus in pod.Status.ContainerStatuses)
+                {
+                    containerStatuses.Add(new Dictionary<string, object>
+                    {
+                        ["name"] = containerStatus.Name,
+                        ["image"] = containerStatus.Image ?? string.Empty,
+                        ["imageID"] = containerStatus.ImageID,
+                        ["ready"] = containerStatus.Ready,
+                        ["restartCount"] = containerStatus.RestartCount,
+                        ["state"] = new Dictionary<string, object>
+                        {
+                            ["running"] = containerStatus.State?.Running != null
+                        }
+                    });
+                }
+            }
+            status["containerStatuses"] = containerStatuses;
+
+            // InitContainerStatuses
+            var initContainerStatuses = new List<Dictionary<string, object>>();
+            if (pod.Status?.InitContainerStatuses != null)
+            {
+                foreach (var containerStatus in pod.Status.InitContainerStatuses)
+                {
+                    initContainerStatuses.Add(new Dictionary<string, object>
+                    {
+                        ["name"] = containerStatus.Name,
+                        ["image"] = containerStatus.Image ?? string.Empty,
+                        ["imageID"] = containerStatus.ImageID,
+                        ["ready"] = containerStatus.Ready,
+                        ["restartCount"] = containerStatus.RestartCount
+                    });
+                }
+            }
+            status["initContainerStatuses"] = initContainerStatuses;
+
+            // Adicionar status ao spec principal
+            spec["status"] = status;
+
+            // Criar e retornar o KubernetesResource
+            return new KubernetesResource(
+                kind: "Pod",
+                name: pod.Metadata.Name,
+                @namespace: pod.Metadata.NamespaceProperty,
+                uid: pod.Metadata.Uid,
+                labels: labels,
+                annotations: annotations,
+                spec: spec
+            );
         }
 
         public async Task<IEnumerable<VulnerabilityReportResource>> GetVulnerabilityReportsAsync(
@@ -290,7 +458,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
 
                 if (@namespace != null)
                 {
-                    // Get reports for a specific namespace
                     _logger.LogInformation($"Getting vulnerability reports from namespace: {@namespace}");
                     reports = await _client.CustomObjects.ListNamespacedCustomObjectAsync(
                         group: TrivyGroup,
@@ -302,7 +469,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                 }
                 else
                 {
-                    // Get reports from all namespaces
                     _logger.LogInformation("Getting vulnerability reports from all namespaces");
                     reports = await _client.CustomObjects.ListClusterCustomObjectAsync(
                         group: TrivyGroup,
@@ -378,7 +544,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
 
                 if (@namespace != null)
                 {
-                    // Get reports for a specific namespace
                     _logger.LogInformation($"Getting config audit reports from namespace: {@namespace}");
                     reports = await _client.CustomObjects.ListNamespacedCustomObjectAsync(
                         group: TrivyGroup,
@@ -390,7 +555,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                 }
                 else
                 {
-                    // Get reports from all namespaces
                     _logger.LogInformation("Getting config audit reports from all namespaces");
                     reports = await _client.CustomObjects.ListClusterCustomObjectAsync(
                         group: TrivyGroup,
@@ -434,63 +598,294 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
             try
             {
                 // Extract metadata
-                var metadata = reportElement.GetProperty("metadata");
-                var name = metadata.GetProperty("name").GetString();
-                var ns = metadata.GetProperty("namespace").GetString();
-                var uid = metadata.GetProperty("uid").GetString();
-                DateTime creationTimestamp = DateTime.UtcNow;
+                if (!reportElement.TryGetProperty("metadata", out var metadata))
+                {
+                    _logger.LogWarning("Report doesn't contain metadata property");
+                    return null;
+                }
 
+                // Extract required metadata fields with validation
+                if (!metadata.TryGetProperty("name", out var nameElement))
+                {
+                    _logger.LogWarning("Metadata doesn't contain name property");
+                    return null;
+                }
+                var name = nameElement.GetString();
+
+                if (!metadata.TryGetProperty("namespace", out var namespaceElement))
+                {
+                    _logger.LogWarning("Metadata doesn't contain namespace property");
+                    return null;
+                }
+                var ns = namespaceElement.GetString();
+
+                if (!metadata.TryGetProperty("uid", out var uidElement))
+                {
+                    _logger.LogWarning("Metadata doesn't contain uid property");
+                    return null;
+                }
+                var uid = uidElement.GetString();
+
+                DateTime creationTimestamp = DateTime.UtcNow;
                 if (metadata.TryGetProperty("creationTimestamp", out var creationTimestampElement))
                 {
                     DateTime.TryParse(creationTimestampElement.GetString(), out creationTimestamp);
                 }
 
-                // Extract report details
-                var report = reportElement.GetProperty("report");
-                var artifact = report.GetProperty("artifact");
-                var imageName = artifact.GetProperty("repository").GetString();
-                var imageTag = artifact.TryGetProperty("tag", out var tagElement) ? tagElement.GetString() : "latest";
-                var fullImageName = $"{imageName}:{imageTag}";
-
-                // Extract vulnerabilities
-                var vulnerabilities = new List<VulnerabilityItem>();
-                if (report.TryGetProperty("vulnerabilities", out var vulnsElement) && vulnsElement.ValueKind != JsonValueKind.Null)
+                // Log top-level properties for debugging
+                var rootProps = new List<string>();
+                foreach (var prop in reportElement.EnumerateObject())
                 {
-                    foreach (var vulnElement in vulnsElement.EnumerateArray())
-                    {
-                        var vuln = new VulnerabilityItem
-                        {
-                            VulnerabilityID = vulnElement.GetProperty("vulnerabilityID").GetString(),
-                            PkgName = vulnElement.GetProperty("pkgName").GetString(),
-                            InstalledVersion = vulnElement.GetProperty("installedVersion").GetString(),
-                            FixedVersion = vulnElement.TryGetProperty("fixedVersion", out var fixedElement) ?
-                                fixedElement.GetString() : null,
-                            Severity = ParseSeverity(vulnElement.GetProperty("severity").GetString()),
-                            Description = vulnElement.TryGetProperty("description", out var descElement) ?
-                                descElement.GetString() : null
-                        };
+                    rootProps.Add(prop.Name);
+                }
+                _logger.LogDebug($"Root properties: {string.Join(", ", rootProps)}");
 
-                        // Extract CVSS score if available
-                        if (vulnElement.TryGetProperty("cvss", out var cvssElement))
+                // Inicializar variáveis para o relatório
+                string imageName = null;
+                string imageTag = "latest";
+                var vulnerabilities = new List<VulnerabilityItem>();
+                var processedVulns = 0;
+                var skippedVulns = 0;
+
+                // Verificar se o relatório existe
+                if (reportElement.TryGetProperty("report", out var report))
+                {
+                    // Log das propriedades do relatório
+                    var reportProps = new List<string>();
+                    foreach (var prop in report.EnumerateObject())
+                    {
+                        reportProps.Add(prop.Name);
+                    }
+                    _logger.LogDebug($"Report properties: {string.Join(", ", reportProps)}");
+
+                    // Tentar encontrar o nome da imagem no formato "artifact.repository"
+                    if (report.TryGetProperty("artifact", out var artifact))
+                    {
+                        if (artifact.TryGetProperty("repository", out var repositoryElement))
                         {
-                            // Get the highest score available (v3 preferred over v2)
-                            if (cvssElement.TryGetProperty("v3", out var v3Element) &&
-                                v3Element.TryGetProperty("baseScore", out var baseScoreElement))
+                            imageName = repositoryElement.GetString();
+
+                            if (artifact.TryGetProperty("tag", out var tagElement))
                             {
-                                vuln.CvssScore = baseScoreElement.GetDouble();
+                                imageTag = tagElement.GetString() ?? "latest";
                             }
-                            else if (cvssElement.TryGetProperty("v2", out var v2Element) &&
-                                     v2Element.TryGetProperty("baseScore", out var v2BaseScoreElement))
+
+                            _logger.LogDebug($"Found image from artifact: {imageName}:{imageTag}");
+                        }
+                    }
+                    // Verificar formato alternativo com "registry" e "target"
+                    else if (report.TryGetProperty("registry", out var registryElement) &&
+                             report.TryGetProperty("target", out var targetElement))
+                    {
+                        var registry = registryElement.GetString() ?? "";
+                        var target = targetElement.GetString() ?? "";
+
+                        if (!string.IsNullOrEmpty(registry) && !string.IsNullOrEmpty(target))
+                        {
+                            imageName = $"{registry}/{target}";
+
+                            if (report.TryGetProperty("tag", out var tagElement))
                             {
-                                vuln.CvssScore = v2BaseScoreElement.GetDouble();
+                                imageTag = tagElement.GetString() ?? "latest";
+                            }
+
+                            _logger.LogDebug($"Found image from registry/target: {imageName}:{imageTag}");
+                        }
+                    }
+
+                    // Verificar se temos o objeto de vulnerabilidades
+                    JsonElement vulnsElement;
+                    bool hasVulnerabilities = false;
+
+                    // Verifica diferentes possiblidades para o caminho das vulnerabilidades
+                    if (report.TryGetProperty("vulnerabilities", out vulnsElement) &&
+                        vulnsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        hasVulnerabilities = true;
+                        _logger.LogDebug($"Found vulnerabilities at report.vulnerabilities");
+                    }
+                    else if (report.TryGetProperty("results", out var resultsElement) &&
+                             resultsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        // Verificar se há um objeto "results" que contém vulnerabilidades
+                        // (comum em alguns formatos de relatório Trivy)
+                        foreach (var resultElement in resultsElement.EnumerateArray())
+                        {
+                            if (resultElement.TryGetProperty("vulnerabilities", out vulnsElement) &&
+                                vulnsElement.ValueKind == JsonValueKind.Array)
+                            {
+                                hasVulnerabilities = true;
+                                _logger.LogDebug($"Found vulnerabilities at report.results[].vulnerabilities");
+                                break;
                             }
                         }
+                    }
+                    else if (reportElement.TryGetProperty("vulnerabilities", out vulnsElement) &&
+                             vulnsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        // Verificar direto no objeto raiz (alguns relatórios têm esta estrutura)
+                        hasVulnerabilities = true;
+                        _logger.LogDebug($"Found vulnerabilities at root.vulnerabilities");
+                    }
 
-                        vulnerabilities.Add(vuln);
+                    // Processar vulnerabilidades se encontradas
+                    if (hasVulnerabilities && vulnsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        int vulnCount = vulnsElement.GetArrayLength();
+                        _logger.LogDebug($"Processing {vulnCount} vulnerabilities");
+
+                        // Se tivermos pelo menos uma vulnerabilidade, logamos sua estrutura para debug
+                        if (vulnCount > 0)
+                        {
+                            var firstVuln = vulnsElement[0];
+                            _logger.LogDebug($"First vulnerability example: {firstVuln.ToString()}");
+
+                            var vulnProps = new List<string>();
+                            foreach (var prop in firstVuln.EnumerateObject())
+                            {
+                                vulnProps.Add(prop.Name);
+                            }
+                            _logger.LogDebug($"Vulnerability properties: {string.Join(", ", vulnProps)}");
+                        }
+
+                        // Processar cada vulnerabilidade conforme o formato específico
+                        foreach (var vulnElement in vulnsElement.EnumerateArray())
+                        {
+                            try
+                            {
+                                // Extrair campos conforme o formato que você compartilhou
+                                string vulnId = null;
+                                string packageName = null;
+                                string installedVersion = null;
+                                string fixedVersion = null;
+                                string severityStr = "Unknown";
+                                string description = null;
+                                var references = new List<string>();
+                                double? cvssScore = null;
+
+                                // VulnerabilityID
+                                if (vulnElement.TryGetProperty("vulnerabilityID", out var vulnIdElement))
+                                    vulnId = vulnIdElement.GetString();
+
+                                // Package Name (resource ou packageName)
+                                if (vulnElement.TryGetProperty("resource", out var resourceElement))
+                                    packageName = resourceElement.GetString();
+                                else if (vulnElement.TryGetProperty("packageName", out var packageNameElement))
+                                    packageName = packageNameElement.GetString();
+
+                                // Versão instalada
+                                if (vulnElement.TryGetProperty("installedVersion", out var versionElement))
+                                    installedVersion = versionElement.GetString();
+
+                                // Versão fixa
+                                if (vulnElement.TryGetProperty("fixedVersion", out var fixedVersionElement))
+                                    fixedVersion = fixedVersionElement.GetString();
+
+                                // Severidade
+                                if (vulnElement.TryGetProperty("severity", out var severityElement))
+                                    severityStr = severityElement.GetString() ?? "Unknown";
+
+                                // Descrição (title)
+                                if (vulnElement.TryGetProperty("title", out var titleElement))
+                                    description = titleElement.GetString();
+
+                                // Links (primaryLink ou links[])
+                                if (vulnElement.TryGetProperty("primaryLink", out var primaryLinkElement))
+                                {
+                                    var link = primaryLinkElement.GetString();
+                                    if (!string.IsNullOrEmpty(link))
+                                        references.Add(link);
+                                }
+
+                                if (vulnElement.TryGetProperty("links", out var linksElement) &&
+                                    linksElement.ValueKind == JsonValueKind.Array)
+                                {
+                                    foreach (var linkElement in linksElement.EnumerateArray())
+                                    {
+                                        if (linkElement.ValueKind == JsonValueKind.String)
+                                        {
+                                            var link = linkElement.GetString();
+                                            if (!string.IsNullOrEmpty(link))
+                                                references.Add(link);
+                                        }
+                                    }
+                                }
+
+                                // CVSS Score
+                                if (vulnElement.TryGetProperty("score", out var scoreElement) &&
+                                    scoreElement.ValueKind == JsonValueKind.Number)
+                                {
+                                    cvssScore = scoreElement.GetDouble();
+                                }
+
+                                // Verificar se temos os campos mínimos necessários
+                                if (string.IsNullOrEmpty(vulnId) || string.IsNullOrEmpty(packageName) ||
+                                    string.IsNullOrEmpty(installedVersion))
+                                {
+                                    var missingFields = new List<string>();
+                                    if (string.IsNullOrEmpty(vulnId)) missingFields.Add("vulnerabilityID");
+                                    if (string.IsNullOrEmpty(packageName)) missingFields.Add("resource/packageName");
+                                    if (string.IsNullOrEmpty(installedVersion)) missingFields.Add("installedVersion");
+
+                                    _logger.LogWarning($"Vulnerability is missing required fields: {string.Join(", ", missingFields)}");
+                                    skippedVulns++;
+                                    continue;
+                                }
+
+                                // Parse severity
+                                VulnerabilitySeverity severity;
+                                if (!Enum.TryParse<VulnerabilitySeverity>(severityStr, true, out severity))
+                                {
+                                    _logger.LogWarning($"Unknown severity: {severityStr}, using Unknown");
+                                    severity = VulnerabilitySeverity.Unknown;
+                                }
+
+                                // Adicionar vulnerabilidade à lista
+                                vulnerabilities.Add(new VulnerabilityItem
+                                {
+                                    VulnerabilityID = vulnId,
+                                    PkgName = packageName,
+                                    InstalledVersion = installedVersion,
+                                    FixedVersion = fixedVersion,
+                                    Severity = severity,
+                                    Description = description,
+                                    References = references,
+                                    CvssScore = cvssScore
+                                });
+
+                                processedVulns++;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogWarning(ex, "Error parsing individual vulnerability");
+                                skippedVulns++;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("No vulnerabilities found in the report");
                     }
                 }
+                else
+                {
+                    _logger.LogWarning("Report element doesn't contain report property");
+                }
 
-                // Create and return the report
+                // Se não conseguimos encontrar um nome de imagem, usamos o nome do relatório como fallback
+                if (string.IsNullOrEmpty(imageName))
+                {
+                    _logger.LogWarning($"Couldn't extract image name from report, using report name as fallback: {name}");
+                    imageName = name;
+                }
+
+                // Construir o nome completo da imagem
+                var fullImageName = string.IsNullOrEmpty(imageTag) ? imageName : $"{imageName}:{imageTag}";
+
+                // Log do resumo do processamento
+                _logger.LogInformation($"Processed {processedVulns} vulnerabilities, skipped {skippedVulns} for image {fullImageName}");
+
+                // Criar e retornar o relatório
                 return new VulnerabilityReportResource
                 {
                     Name = name,
@@ -504,7 +899,7 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error parsing vulnerability report");
-                throw;
+                return null;
             }
         }
 
@@ -512,52 +907,90 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
         {
             try
             {
-                // Extract metadata
-                var metadata = reportElement.GetProperty("metadata");
-                var name = metadata.GetProperty("name").GetString();
-                var ns = metadata.GetProperty("namespace").GetString();
-                var uid = metadata.GetProperty("uid").GetString();
-                DateTime creationTimestamp = DateTime.UtcNow;
+                // Extract metadata com verificações
+                if (!reportElement.TryGetProperty("metadata", out var metadata))
+                {
+                    _logger.LogWarning("Config audit report doesn't contain metadata property");
+                    return null;
+                }
 
+                if (!metadata.TryGetProperty("name", out var nameElement) ||
+                    !metadata.TryGetProperty("namespace", out var namespaceElement) ||
+                    !metadata.TryGetProperty("uid", out var uidElement))
+                {
+                    _logger.LogWarning("Config audit report metadata missing required fields");
+                    return null;
+                }
+
+                var name = nameElement.GetString();
+                var ns = namespaceElement.GetString();
+                var uid = uidElement.GetString();
+
+                DateTime creationTimestamp = DateTime.UtcNow;
                 if (metadata.TryGetProperty("creationTimestamp", out var creationTimestampElement))
                 {
                     DateTime.TryParse(creationTimestampElement.GetString(), out creationTimestamp);
                 }
 
-                // Extract report details
-                var report = reportElement.GetProperty("report");
-                var summary = report.GetProperty("summary");
+                // Check if report property exists
+                if (!reportElement.TryGetProperty("report", out var report))
+                {
+                    _logger.LogWarning("Config audit report doesn't contain report property");
+                    return null;
+                }
 
+                // Extract summary safely
                 int lowCount = 0, mediumCount = 0, highCount = 0, criticalCount = 0;
+                if (report.TryGetProperty("summary", out var summary))
+                {
+                    if (summary.TryGetProperty("lowCount", out var lowElement))
+                        lowCount = lowElement.GetInt32();
+                    if (summary.TryGetProperty("mediumCount", out var mediumElement))
+                        mediumCount = mediumElement.GetInt32();
+                    if (summary.TryGetProperty("highCount", out var highElement))
+                        highCount = highElement.GetInt32();
+                    if (summary.TryGetProperty("criticalCount", out var criticalElement))
+                        criticalCount = criticalElement.GetInt32();
+                }
 
-                if (summary.TryGetProperty("lowCount", out var lowElement))
-                    lowCount = lowElement.GetInt32();
-                if (summary.TryGetProperty("mediumCount", out var mediumElement))
-                    mediumCount = mediumElement.GetInt32();
-                if (summary.TryGetProperty("highCount", out var highElement))
-                    highCount = highElement.GetInt32();
-                if (summary.TryGetProperty("criticalCount", out var criticalElement))
-                    criticalCount = criticalElement.GetInt32();
-
-                // Extract check results
+                // Extract check results safely
                 var checks = new List<ConfigAuditCheck>();
-                if (report.TryGetProperty("checks", out var checksElement))
+                if (report.TryGetProperty("checks", out var checksElement) &&
+                    checksElement.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var checkElement in checksElement.EnumerateArray())
                     {
-                        var check = new ConfigAuditCheck
+                        try
                         {
-                            ID = checkElement.GetProperty("checkID").GetString(),
-                            Title = checkElement.GetProperty("title").GetString(),
-                            Severity = ParseSeverity(checkElement.GetProperty("severity").GetString()),
-                            Category = checkElement.TryGetProperty("category", out var catElement) ?
-                                catElement.GetString() : null,
-                            Description = checkElement.TryGetProperty("description", out var descElement) ?
-                                descElement.GetString() : null,
-                            Success = checkElement.GetProperty("success").GetBoolean()
-                        };
+                            // Verificar campos obrigatórios
+                            if (!checkElement.TryGetProperty("checkID", out var checkIdElement) ||
+                                !checkElement.TryGetProperty("severity", out var severityElement) ||
+                                !checkElement.TryGetProperty("success", out var successElement))
+                            {
+                                _logger.LogWarning("Config audit check missing required fields, skipping");
+                                continue;
+                            }
 
-                        checks.Add(check);
+                            var check = new ConfigAuditCheck
+                            {
+                                ID = checkIdElement.GetString(),
+                                Title = checkElement.TryGetProperty("title", out var titleElement) ?
+                                    titleElement.GetString() : checkIdElement.GetString(),
+                                Severity = ParseSeverity(severityElement.GetString()),
+                                Category = checkElement.TryGetProperty("category", out var catElement) ?
+                                    catElement.GetString() : null,
+                                Description = checkElement.TryGetProperty("description", out var descElement) ?
+                                    descElement.GetString() : null,
+                                Success = successElement.GetBoolean()
+                            };
+
+                            checks.Add(check);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Error parsing individual config audit check");
+                            // Continue with the next check
+                        }
                     }
                 }
 
@@ -578,7 +1011,7 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error parsing config audit report");
-                throw;
+                return null;
             }
         }
 

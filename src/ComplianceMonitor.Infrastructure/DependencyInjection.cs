@@ -51,7 +51,6 @@ namespace ComplianceMonitor.Infrastructure
 
         public static IServiceCollection AddApplication(this IServiceCollection services, IConfiguration configuration)
         {
-            // AutoMapper configuration
             services.AddAutoMapper(typeof(MappingProfile));
 
             // Application services
@@ -60,10 +59,22 @@ namespace ComplianceMonitor.Infrastructure
             services.AddScoped<IScanService, ScanService>();
             services.AddScoped<IDashboardService, DashboardService>();
 
-            // Configuration for services
             services.Configure<ScanServiceOptions>(options => {
                 options.ScanIntervalHours = configuration.GetValue<int>("Trivy:ScanIntervalHours", 24);
                 options.UseOperatorScanner = configuration.GetValue<bool>("TrivyOperator:Enabled", true);
+
+                var isDevelopment = configuration.GetValue<bool>("IsDevelopmentEnvironment", false);
+                options.AddDefaultImagesInDev = isDevelopment &&
+                                               configuration.GetValue<bool>("Trivy:AddDefaultImagesInDev", false);
+
+                if (options.AddDefaultImagesInDev)
+                {
+                    var defaultImages = configuration.GetSection("Trivy:DefaultImages").Get<List<string>>();
+                    if (defaultImages != null && defaultImages.Any())
+                    {
+                        options.DefaultImages = defaultImages;
+                    }
+                }
             });
 
             services.Configure<DashboardServiceOptions>(options => {
