@@ -21,7 +21,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<PolicyDto>>> GetPolicies([FromQuery] bool? enabled = null, CancellationToken cancellationToken = default)
         {
             var policies = await _policyService.GetAllPoliciesAsync(enabled, cancellationToken);
@@ -29,8 +28,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet("{id}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<PolicyDto>> GetPolicy(Guid id, CancellationToken cancellationToken = default)
         {
             var policy = await _policyService.GetPolicyByIdAsync(id, cancellationToken);
@@ -38,8 +35,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpPost]
-        [ProducesResponseType(StatusCodes.Status201Created)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<ActionResult<PolicyDto>> CreatePolicy(PolicyCreateDto policyDto, CancellationToken cancellationToken = default)
         {
             var createdPolicy = await _policyService.CreatePolicyAsync(policyDto, cancellationToken);
@@ -47,9 +42,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpPut("{id}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<PolicyDto>> UpdatePolicy(Guid id, PolicyUpdateDto policyDto, CancellationToken cancellationToken = default)
         {
             var updatedPolicy = await _policyService.UpdatePolicyAsync(id, policyDto, cancellationToken);
@@ -57,8 +49,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpDelete("{id}")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult> DeletePolicy(Guid id, CancellationToken cancellationToken = default)
         {
             await _policyService.DeletePolicyAsync(id, cancellationToken);

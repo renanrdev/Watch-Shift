@@ -26,7 +26,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
             _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            // Try multiple paths if default doesn't work
             _altPaths = new List<string>();
             if (OperatingSystem.IsWindows())
             {
@@ -130,7 +129,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
                         if (process.ExitCode == 0)
                         {
-                            // Update to use the path that worked
                             _options.TrivyPath = altPath;
                             var output = await process.StandardOutput.ReadToEndAsync();
                             _logger.LogInformation($"Trivy available with alternative path: {output.Trim()}");
@@ -154,7 +152,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
             {
                 _logger.LogInformation($"Starting scan for image {imageName}");
 
-                // Check if Trivy is available
                 var isAvailable = await IsAvailableAsync(cancellationToken);
                 if (!isAvailable)
                 {
@@ -167,7 +164,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                     );
                 }
 
-                // Execute Trivy to scan the image and get JSON result
                 var timeoutArg = $"{_options.TimeoutSeconds}s";
 
                 // Construir argumentos do comando
@@ -182,7 +178,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                     {
                         _logger.LogInformation("Using OpenShift credentials for authentication");
 
-                        // Se a imagem parecer ser do registro interno do OpenShift (sem domínio explícito)
                         if (imageName.Contains("/") && !imageName.Contains(".") &&
                             !imageName.StartsWith("docker.io/") &&
                             !imageName.StartsWith("quay.io/"))
@@ -190,7 +185,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                             // Formato: namespace/imagename:tag
                             _logger.LogInformation("Image appears to be from internal OpenShift registry");
 
-                            // Adicionar o prefixo do registro se necessário
                             if (!string.IsNullOrEmpty(_options.OpenShiftRegistry) &&
                                 !imageName.StartsWith(_options.OpenShiftRegistry))
                             {
@@ -200,7 +194,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
                             // Adicionar credenciais no comando
                             arguments.Add("--username");
-                            arguments.Add("sa"); // ServiceAccount username, não importa para OpenShift
+                            arguments.Add("sa"); // ServiceAccount username,
                             arguments.Add("--password");
                             arguments.Add(token);
                         }
@@ -211,11 +205,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                     }
                 }
 
-                // Adicionar nome da imagem aos argumentos
                 arguments.Add(imageName);
-
-                // Log de comando (ocultando senha)
-               // _logger.LogInformation($"Running Trivy with command: {_options.TrivyPath} {string.Join(" ", arguments.Where(a => a != token))}");
 
                 var startInfo = new ProcessStartInfo
                 {
@@ -233,11 +223,9 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                     var token = Environment.GetEnvironmentVariable("OPENSHIFT_TOKEN");
                     if (!string.IsNullOrEmpty(token))
                     {
-                        // Adicionar credenciais como variáveis de ambiente também (método alternativo)
                         startInfo.EnvironmentVariables["TRIVY_USERNAME"] = "sa";
                         startInfo.EnvironmentVariables["TRIVY_PASSWORD"] = token;
 
-                        // Variáveis de ambiente que ajudam a depurar problemas de rede
                         startInfo.EnvironmentVariables["TRIVY_DEBUG"] = "true";
                         startInfo.EnvironmentVariables["TRIVY_INSECURE"] = "true"; // Ignora erros de certificado
                     }
@@ -252,13 +240,11 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                 var outputTask = process.StandardOutput.ReadToEndAsync();
                 var errorTask = process.StandardError.ReadToEndAsync();
 
-                // Handle timeout correctly
                 using var timeoutTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(_options.TimeoutSeconds));
                 using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(timeoutTokenSource.Token, cancellationToken);
 
                 try
                 {
-                    // Await process exit with timeout
                     await process.WaitForExitAsync(linkedTokenSource.Token);
 
                     var output = await outputTask;
@@ -282,7 +268,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
                     _logger.LogInformation($"Scan completed for {imageName}, processing results");
 
-                    // Check if output is valid JSON
                     if (string.IsNullOrWhiteSpace(output))
                     {
                         _logger.LogWarning("Trivy returned empty output");
@@ -340,7 +325,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                         );
                     }
 
-                    // Cancelamento solicitado pelo chamador, propague a exceção
                     throw;
                 }
             }
@@ -363,7 +347,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
             try
             {
-                // Extract basic metadata
                 if (scanResult.RootElement.TryGetProperty("Metadata", out var metadataElement))
                 {
                     if (metadataElement.TryGetProperty("OS", out var osElement))
@@ -380,7 +363,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                     }
                 }
 
-                // Extract results (Trivy organizes by "Target" - different layers/packages)
                 if (scanResult.RootElement.TryGetProperty("Results", out var resultsElement))
                 {
                     foreach (var result in resultsElement.EnumerateArray())

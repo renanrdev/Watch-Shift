@@ -13,17 +13,13 @@ using ComplianceMonitor.Infrastructure.Background;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container
 builder.Services.AddControllers();
-
-// Configure swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "Compliance Monitor API", Version = "v1" });
 });
 
-// Configure CORS
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -34,25 +30,17 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Add application services
 builder.Services.AddApplication(builder.Configuration);
-
-// Add infrastructure services
 builder.Services.AddInfrastructure(builder.Configuration);
-
-// Configure background service options
 builder.Services.Configure<ScanBackgroundServiceOptions>(builder.Configuration.GetSection("BackgroundService"));
 
-// Build the app
 var app = builder.Build();
 
-// Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 
-    // Apply database migrations in development
     using (var scope = app.Services.CreateScope())
     {
         var dbContext = scope.ServiceProvider.GetRequiredService<ComplianceDbContext>();
@@ -72,18 +60,14 @@ if (app.Environment.IsDevelopment())
 }
 else
 {
-    // Custom exception handler for production
     app.UseExceptionHandler("/error");
 
-    // Enable HTTPS redirection in production
     app.UseHsts();
     app.UseHttpsRedirection();
 }
 
-// Use custom exception handling middleware
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-// Enable CORS
 app.UseCors();
 
 app.UseRouting();

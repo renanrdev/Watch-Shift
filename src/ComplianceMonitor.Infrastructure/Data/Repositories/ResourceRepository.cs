@@ -20,7 +20,6 @@ namespace ComplianceMonitor.Infrastructure.Data.Repositories
 
         public async Task<Guid> AddAsync(KubernetesResource resource, CancellationToken cancellationToken = default)
         {
-            // Check if resource with same UID already exists
             var existing = await _context.Resources
                 .FirstOrDefaultAsync(r => r.Uid == resource.Uid, cancellationToken);
 

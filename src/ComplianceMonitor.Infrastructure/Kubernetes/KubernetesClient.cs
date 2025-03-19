@@ -327,7 +327,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
 
         private KubernetesResource MapPodToResource(V1Pod pod)
         {
-            // Criar objetos vazios para evitar null references
             var labels = pod.Metadata.Labels != null
                 ? pod.Metadata.Labels.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
                 : new Dictionary<string, string>();
@@ -336,7 +335,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                 ? pod.Metadata.Annotations.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
                 : new Dictionary<string, string>();
 
-            // Criar spec como um dicionário hierárquico
             var spec = new Dictionary<string, object>();
 
             // 1. Adicionar diretamente os containers e initContainers para facilidade de acesso
@@ -353,7 +351,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                         ["image"] = container.Image ?? string.Empty
                     };
 
-                    // Adicionar outros campos úteis
                     if (container.Ports != null)
                     {
                         containerDict["ports"] = container.Ports.Select(p => new { p.ContainerPort, p.Protocol }).ToList();
@@ -393,7 +390,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                 ["phase"] = pod.Status?.Phase
             };
 
-            // ContainerStatuses
             var containerStatuses = new List<Dictionary<string, object>>();
             if (pod.Status?.ContainerStatuses != null)
             {
@@ -415,7 +411,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
             }
             status["containerStatuses"] = containerStatuses;
 
-            // InitContainerStatuses
             var initContainerStatuses = new List<Dictionary<string, object>>();
             if (pod.Status?.InitContainerStatuses != null)
             {
@@ -433,7 +428,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
             }
             status["initContainerStatuses"] = initContainerStatuses;
 
-            // Adicionar status ao spec principal
             spec["status"] = status;
 
             // Criar e retornar o KubernetesResource
@@ -597,14 +591,12 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
         {
             try
             {
-                // Extract metadata
                 if (!reportElement.TryGetProperty("metadata", out var metadata))
                 {
                     _logger.LogWarning("Report doesn't contain metadata property");
                     return null;
                 }
 
-                // Extract required metadata fields with validation
                 if (!metadata.TryGetProperty("name", out var nameElement))
                 {
                     _logger.LogWarning("Metadata doesn't contain name property");
@@ -632,7 +624,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                     DateTime.TryParse(creationTimestampElement.GetString(), out creationTimestamp);
                 }
 
-                // Log top-level properties for debugging
                 var rootProps = new List<string>();
                 foreach (var prop in reportElement.EnumerateObject())
                 {
@@ -640,7 +631,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                 }
                 _logger.LogDebug($"Root properties: {string.Join(", ", rootProps)}");
 
-                // Inicializar variáveis para o relatório
                 string imageName = null;
                 string imageTag = "latest";
                 var vulnerabilities = new List<VulnerabilityItem>();
@@ -650,7 +640,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                 // Verificar se o relatório existe
                 if (reportElement.TryGetProperty("report", out var report))
                 {
-                    // Log das propriedades do relatório
                     var reportProps = new List<string>();
                     foreach (var prop in report.EnumerateObject())
                     {
@@ -658,7 +647,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                     }
                     _logger.LogDebug($"Report properties: {string.Join(", ", reportProps)}");
 
-                    // Tentar encontrar o nome da imagem no formato "artifact.repository"
                     if (report.TryGetProperty("artifact", out var artifact))
                     {
                         if (artifact.TryGetProperty("repository", out var repositoryElement))
@@ -673,7 +661,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                             _logger.LogDebug($"Found image from artifact: {imageName}:{imageTag}");
                         }
                     }
-                    // Verificar formato alternativo com "registry" e "target"
                     else if (report.TryGetProperty("registry", out var registryElement) &&
                              report.TryGetProperty("target", out var targetElement))
                     {
@@ -693,11 +680,9 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                         }
                     }
 
-                    // Verificar se temos o objeto de vulnerabilidades
                     JsonElement vulnsElement;
                     bool hasVulnerabilities = false;
 
-                    // Verifica diferentes possiblidades para o caminho das vulnerabilidades
                     if (report.TryGetProperty("vulnerabilities", out vulnsElement) &&
                         vulnsElement.ValueKind == JsonValueKind.Array)
                     {
@@ -707,8 +692,7 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                     else if (report.TryGetProperty("results", out var resultsElement) &&
                              resultsElement.ValueKind == JsonValueKind.Array)
                     {
-                        // Verificar se há um objeto "results" que contém vulnerabilidades
-                        // (comum em alguns formatos de relatório Trivy)
+                        
                         foreach (var resultElement in resultsElement.EnumerateArray())
                         {
                             if (resultElement.TryGetProperty("vulnerabilities", out vulnsElement) &&
@@ -723,7 +707,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                     else if (reportElement.TryGetProperty("vulnerabilities", out vulnsElement) &&
                              vulnsElement.ValueKind == JsonValueKind.Array)
                     {
-                        // Verificar direto no objeto raiz (alguns relatórios têm esta estrutura)
                         hasVulnerabilities = true;
                         _logger.LogDebug($"Found vulnerabilities at root.vulnerabilities");
                     }
@@ -734,7 +717,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                         int vulnCount = vulnsElement.GetArrayLength();
                         _logger.LogDebug($"Processing {vulnCount} vulnerabilities");
 
-                        // Se tivermos pelo menos uma vulnerabilidade, logamos sua estrutura para debug
                         if (vulnCount > 0)
                         {
                             var firstVuln = vulnsElement[0];
@@ -748,12 +730,10 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                             _logger.LogDebug($"Vulnerability properties: {string.Join(", ", vulnProps)}");
                         }
 
-                        // Processar cada vulnerabilidade conforme o formato específico
                         foreach (var vulnElement in vulnsElement.EnumerateArray())
                         {
                             try
                             {
-                                // Extrair campos conforme o formato que você compartilhou
                                 string vulnId = null;
                                 string packageName = null;
                                 string installedVersion = null;
@@ -811,7 +791,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                                     }
                                 }
 
-                                // CVSS Score
                                 if (vulnElement.TryGetProperty("score", out var scoreElement) &&
                                     scoreElement.ValueKind == JsonValueKind.Number)
                                 {
@@ -832,7 +811,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                                     continue;
                                 }
 
-                                // Parse severity
                                 VulnerabilitySeverity severity;
                                 if (!Enum.TryParse<VulnerabilitySeverity>(severityStr, true, out severity))
                                 {
@@ -872,17 +850,13 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                     _logger.LogWarning("Report element doesn't contain report property");
                 }
 
-                // Se não conseguimos encontrar um nome de imagem, usamos o nome do relatório como fallback
                 if (string.IsNullOrEmpty(imageName))
                 {
                     _logger.LogWarning($"Couldn't extract image name from report, using report name as fallback: {name}");
                     imageName = name;
                 }
 
-                // Construir o nome completo da imagem
                 var fullImageName = string.IsNullOrEmpty(imageTag) ? imageName : $"{imageName}:{imageTag}";
-
-                // Log do resumo do processamento
                 _logger.LogInformation($"Processed {processedVulns} vulnerabilities, skipped {skippedVulns} for image {fullImageName}");
 
                 // Criar e retornar o relatório
@@ -907,7 +881,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
         {
             try
             {
-                // Extract metadata com verificações
                 if (!reportElement.TryGetProperty("metadata", out var metadata))
                 {
                     _logger.LogWarning("Config audit report doesn't contain metadata property");
@@ -932,14 +905,12 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                     DateTime.TryParse(creationTimestampElement.GetString(), out creationTimestamp);
                 }
 
-                // Check if report property exists
                 if (!reportElement.TryGetProperty("report", out var report))
                 {
                     _logger.LogWarning("Config audit report doesn't contain report property");
                     return null;
                 }
 
-                // Extract summary safely
                 int lowCount = 0, mediumCount = 0, highCount = 0, criticalCount = 0;
                 if (report.TryGetProperty("summary", out var summary))
                 {
@@ -953,7 +924,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                         criticalCount = criticalElement.GetInt32();
                 }
 
-                // Extract check results safely
                 var checks = new List<ConfigAuditCheck>();
                 if (report.TryGetProperty("checks", out var checksElement) &&
                     checksElement.ValueKind == JsonValueKind.Array)
@@ -962,7 +932,6 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                     {
                         try
                         {
-                            // Verificar campos obrigatórios
                             if (!checkElement.TryGetProperty("checkID", out var checkIdElement) ||
                                 !checkElement.TryGetProperty("severity", out var severityElement) ||
                                 !checkElement.TryGetProperty("success", out var successElement))
@@ -989,12 +958,10 @@ namespace ComplianceMonitor.Infrastructure.Kubernetes
                         catch (Exception ex)
                         {
                             _logger.LogWarning(ex, "Error parsing individual config audit check");
-                            // Continue with the next check
                         }
                     }
                 }
 
-                // Create and return the report
                 return new ConfigAuditReportResource
                 {
                     Name = name,

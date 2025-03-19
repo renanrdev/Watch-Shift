@@ -36,12 +36,10 @@ namespace ComplianceMonitor.Infrastructure.Data.Configurations
             builder.Property(p => p.UpdatedAt)
                 .IsRequired();
 
-            // Relationships
             builder.HasMany<ComplianceCheck>()
                 .WithOne(c => c.Policy)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Indexes
             builder.HasIndex(p => p.Name);
             builder.HasIndex(p => p.IsEnabled);
             builder.HasIndex(p => p.RuleType);

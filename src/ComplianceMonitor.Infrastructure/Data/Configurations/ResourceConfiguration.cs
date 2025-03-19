@@ -18,10 +18,10 @@ namespace ComplianceMonitor.Infrastructure.Data.Configurations
 
             builder.Property(r => r.Name)
                 .IsRequired()
-                .HasMaxLength(253); // Kubernetes name max length
+                .HasMaxLength(253); 
 
             builder.Property(r => r.Namespace)
-                .HasMaxLength(253); // Kubernetes namespace max length
+                .HasMaxLength(253);
 
             builder.Property(r => r.Uid)
                 .IsRequired()
@@ -30,12 +30,10 @@ namespace ComplianceMonitor.Infrastructure.Data.Configurations
             builder.Property(r => r.CreatedAt)
                 .IsRequired();
 
-            // Relationships
             builder.HasMany<ComplianceCheck>()
                 .WithOne(c => c.Resource)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Indexes
             builder.HasIndex(r => r.Uid).IsUnique();
             builder.HasIndex(r => r.Kind);
             builder.HasIndex(r => r.Namespace);

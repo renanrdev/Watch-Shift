@@ -31,9 +31,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpPost]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<ImageScanResultDto>> ScanImage(ScanRequestDto scanRequest, CancellationToken cancellationToken = default)
         {
             try
@@ -49,15 +46,13 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpPost("batch")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<BatchScanResultDto>> ScanAllImages([FromQuery] bool force = false, CancellationToken cancellationToken = default)
         {
             try
             {
                 var result = await _scanService.ScanAllImagesAsync(force, cancellationToken);
 
-                // Se não tiver encontrado imagens e estiver em ambiente de desenvolvimento,
-                // sugerir algumas imagens conhecidas para teste
+                // Em ambiente de desenvolvimento utiliza imagens padrões
                 if (result.ScannedImages == 0 && _environment.IsDevelopment())
                 {
                     // Adicionar sugestões ao resultado
@@ -67,10 +62,8 @@ namespace ComplianceMonitor.Api.Controllers
                         "mcr.microsoft.com/dotnet/aspnet:8.0"
                     };
 
-                    // Adicionar mensagem informativa
                     _logger.LogInformation("No images found to scan. In development, you can try scanning specific test images");
 
-                    // Adicionar informações ao resultado
                     result.Status = "completed_with_suggestions";
                     result.Error = "No images were found in the cluster. You can try scanning specific test images manually.";
                     result.ImageList = suggestions;
@@ -86,8 +79,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet("namespace/{namespace}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<NamespaceScanSummaryDto>> GetNamespaceVulnerabilities(string @namespace, CancellationToken cancellationToken = default)
         {
             try
@@ -103,9 +94,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet("{imageName}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<ImageScanResultDto>> GetImageScan(string imageName, CancellationToken cancellationToken = default)
         {
             try
@@ -125,7 +113,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet("test-trivy")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<Dictionary<string, object>>> TestTrivy(CancellationToken cancellationToken = default)
         {
             try

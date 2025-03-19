@@ -15,7 +15,6 @@ namespace ComplianceMonitor.Domain.Entities
         public Dictionary<string, object> Spec { get; private set; }
         public DateTime CreatedAt { get; private set; }
 
-        // Para EF Core
         private KubernetesResource() { }
 
         public KubernetesResource(

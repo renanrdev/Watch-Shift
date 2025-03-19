@@ -30,12 +30,10 @@ namespace ComplianceMonitor.Infrastructure.Data.Repositories
                 var vulnerabilityIds = new HashSet<string>();
                 var duplicateVulnerabilities = new List<Vulnerability>();
 
-                // Verificar vulnerabilidades duplicadas dentro do próprio resultado
                 foreach (var vulnerability in scanResult.Vulnerabilities.ToList())
                 {
                     if (!vulnerabilityIds.Add(vulnerability.Id.ToString()))
                     {
-                        // Encontrou uma duplicata dentro do próprio resultado
                         duplicateVulnerabilities.Add(vulnerability);
                         scanResult.Vulnerabilities.Remove(vulnerability);
                     }

@@ -20,7 +20,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet]
-        [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<DashboardDto>> GetDashboardData(CancellationToken cancellationToken = default)
         {
             var data = await _dashboardService.GetDashboardDataAsync(cancellationToken);

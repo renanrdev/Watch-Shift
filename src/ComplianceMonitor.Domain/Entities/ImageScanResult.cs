@@ -26,7 +26,6 @@ namespace ComplianceMonitor.Domain.Entities
             ScanTime = scanTime ?? DateTime.UtcNow;
             Metadata = metadata ?? new Dictionary<string, object>();
 
-            // Configure a relação
             Vulnerabilities = vulnerabilities ?? new List<Vulnerability>();
             foreach (var vulnerability in Vulnerabilities)
             {

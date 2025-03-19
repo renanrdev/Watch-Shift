@@ -12,7 +12,6 @@ namespace ComplianceMonitor.Infrastructure.Data
         {
             var basePath = Directory.GetCurrentDirectory();
 
-            // Navegar até a pasta do projeto API
             var configPath = Path.Combine(basePath, "..", "ComplianceMonitor.Api");
 
             var configuration = new ConfigurationBuilder()

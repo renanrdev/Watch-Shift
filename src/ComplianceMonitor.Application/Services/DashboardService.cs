@@ -92,13 +92,12 @@ namespace ComplianceMonitor.Application.Services
 
         private async Task GetComplianceStatsAsync(DashboardDto result, CancellationToken cancellationToken)
         {
-            // First try to get config audit reports from Trivy Operator if available
             if (_options.UseTrivyOperator)
             {
                 try
                 {
                     var configAuditReports = await (_kubernetesClient).GetConfigAuditReportsAsync(
-                        null, // All namespaces
+                        null, // Todos namespaces
                         cancellationToken);
 
                     if (configAuditReports.Any())
@@ -140,18 +139,16 @@ namespace ComplianceMonitor.Application.Services
                         result.ComplianceStats.WarningCount = warningChecks;
                         result.ComplianceStats.ErrorCount = errorChecks;
 
-                        // Trivy Operator data found, so return
                         return;
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Error retrieving config audit reports from Trivy Operator, falling back to database");
-                    // Continue to database checks
+                    
                 }
             }
 
-            // Fall back to compliance checks from the database
             var checks = await _checkRepository.GetAllAsync(limit: 1000, cancellationToken: cancellationToken);
             foreach (var check in checks)
             {
@@ -175,13 +172,12 @@ namespace ComplianceMonitor.Application.Services
 
         private async Task GetVulnerabilityStatsAsync(DashboardDto result, CancellationToken cancellationToken)
         {
-            // First try to get vulnerability reports from Trivy Operator if available
             if (_options.UseTrivyOperator)
             {
                 try
                 {
                     var vulnerabilityReports = await (_kubernetesClient).GetVulnerabilityReportsAsync(
-                        null, // All namespaces
+                        null, // Todos namespaces
                         cancellationToken);
 
                     if (vulnerabilityReports.Any())
@@ -211,18 +207,15 @@ namespace ComplianceMonitor.Application.Services
                             }
                         }
 
-                        // Trivy Operator data found, so return
                         return;
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Error retrieving vulnerability reports from Trivy Operator, falling back to database");
-                    // Continue to database lookup
                 }
             }
 
-            // Fall back to scans from the database
             var scans = await _scanRepository.GetAllAsync(limit: 20, cancellationToken: cancellationToken);
             foreach (var scan in scans)
             {
@@ -288,12 +281,10 @@ namespace ComplianceMonitor.Application.Services
                 }
             }
 
-            // If we don't have enough alerts from the database, try to generate some from Trivy Operator reports
             if (result.RecentAlerts.Count < 5 && _options.UseTrivyOperator)
             {
                 try
                 {
-                    // Get failed config audit checks
                     var configAuditReports = await (_kubernetesClient).GetConfigAuditReportsAsync(
                         null,
                         cancellationToken);
@@ -311,7 +302,7 @@ namespace ComplianceMonitor.Application.Services
                     {
                         var alertDto = new AlertDto
                         {
-                            Id = Guid.NewGuid(), // Generate a new ID since this isn't a real alert
+                            Id = Guid.NewGuid(), 
                             Severity = failedCheck.Check.Severity.ToString().ToLower(),
                             Title = failedCheck.Check.Title,
                             Resource = $"{failedCheck.Report.Namespace}/{failedCheck.Report.Name}",

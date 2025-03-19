@@ -10,14 +10,11 @@ namespace ComplianceMonitor.Application.Mapping
     {
         public MappingProfile()
         {
-            // Policy mappings
             CreateMap<Policy, PolicyDto>()
                 .ForMember(dest => dest.Enabled, opt => opt.MapFrom(src => src.IsEnabled));
 
-            // Vulnerability mappings
             CreateMap<Vulnerability, VulnerabilityDto>();
 
-            // ImageScanResult mappings
             CreateMap<ImageScanResult, ImageScanResultDto>()
                 .ForMember(dest => dest.SeverityCounts, opt => opt.MapFrom(src =>
                     src.CountBySeverity().ToDictionary(

@@ -28,8 +28,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet("vulnerability")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<IEnumerable<VulnerabilityReportResource>>> GetVulnerabilityReports(
             [FromQuery] string ns = null,
             CancellationToken cancellationToken = default)
@@ -51,9 +49,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet("vulnerability/{name}")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status404NotFound)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<VulnerabilityReportResource>> GetVulnerabilityReport(
             string name,
             [FromQuery] string ns = "default",
@@ -82,8 +77,6 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet("configaudit")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<IEnumerable<ConfigAuditReportResource>>> GetConfigAuditReports(
             [FromQuery] string ns = null,
             CancellationToken cancellationToken = default)
@@ -105,15 +98,12 @@ namespace ComplianceMonitor.Api.Controllers
         }
 
         [HttpGet("summary")]
-        [ProducesResponseType(StatusCodes.Status200OK)]
-        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<ComplianceReportSummary>> GetComplianceSummary(
             [FromQuery] string ns = null,
             CancellationToken cancellationToken = default)
         {
             try
             {
-                // Get both types of reports
                 var vulnerabilityReports = await ((KubernetesClient)_kubernetesClient).GetVulnerabilityReportsAsync(
                     ns,
                     cancellationToken);
@@ -122,7 +112,6 @@ namespace ComplianceMonitor.Api.Controllers
                     ns,
                     cancellationToken);
 
-                // Create summary
                 var summary = new ComplianceReportSummary
                 {
                     Namespace = ns ?? "all-namespaces",
@@ -133,7 +122,6 @@ namespace ComplianceMonitor.Api.Controllers
                     ConfigAuditResults = new ConfigAuditSummary()
                 };
 
-                // Process vulnerability reports
                 foreach (var report in vulnerabilityReports)
                 {
                     foreach (var vuln in report.Vulnerabilities)
@@ -159,7 +147,6 @@ namespace ComplianceMonitor.Api.Controllers
                     }
                 }
 
-                // Process config audit reports
                 foreach (var report in configAuditReports)
                 {
                     summary.ConfigAuditResults.Critical += report.CriticalCount;

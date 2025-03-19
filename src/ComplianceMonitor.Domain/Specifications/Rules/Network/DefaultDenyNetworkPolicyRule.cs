@@ -16,12 +16,10 @@ namespace ComplianceMonitor.Domain.Specifications.Rules.Network
                 return ComplianceStatus.Unknown;
             }
 
-            // Check if it's a default deny policy
             bool isPodSelectorEmpty = false;
             bool hasNoIngressRules = false;
             bool hasNoEgressRules = false;
 
-            // Check pod selector is empty (selects all pods)
             if (resource.Spec.TryGetValue("podSelector", out var podSelectorObj) &&
                 podSelectorObj is Dictionary<string, object> podSelector)
             {
@@ -66,7 +64,6 @@ namespace ComplianceMonitor.Domain.Specifications.Rules.Network
                 return ComplianceStatus.Compliant;
             }
 
-            // It's not a default deny policy
             return ComplianceStatus.Warning;
         }
 

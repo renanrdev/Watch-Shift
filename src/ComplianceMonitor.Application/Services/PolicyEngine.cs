@@ -27,7 +27,6 @@ namespace ComplianceMonitor.Application.Services
             _policyRepository = policyRepository ?? throw new ArgumentNullException(nameof(policyRepository));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-            // Register rule types
             _ruleTypes = new Dictionary<RuleType, Dictionary<string, Type>>
             {
                 [RuleType.Rbac] = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
@@ -55,7 +54,6 @@ namespace ComplianceMonitor.Application.Services
             Dictionary<string, object> parameters = null,
             CancellationToken cancellationToken = default)
         {
-            // Validate rule type and name
             if (!_ruleTypes.TryGetValue(ruleType, out var ruleTypeDict))
             {
                 throw new ArgumentException($"Unsupported rule type: {ruleType}");
@@ -66,11 +64,9 @@ namespace ComplianceMonitor.Application.Services
                 throw new ArgumentException($"Unsupported rule name for {ruleType}: {ruleName}");
             }
 
-            // Prepare parameters
             var allParameters = parameters ?? new Dictionary<string, object>();
             allParameters["rule_name"] = ruleName;
 
-            // Create policy
             var policy = new Policy(
                 name: name,
                 description: description,
@@ -100,7 +96,6 @@ namespace ComplianceMonitor.Application.Services
         {
             var rule = CreateRuleForPolicy(policy);
 
-            // Check if rule applies to resource
             if (!rule.AppliesTo(resource))
             {
                 return new ComplianceCheck(
@@ -114,7 +109,6 @@ namespace ComplianceMonitor.Application.Services
                 );
             }
 
-            // Evaluate resource
             var status = rule.Evaluate(resource);
             var details = new Dictionary<string, object>(rule.GetDetails())
             {
@@ -133,14 +127,12 @@ namespace ComplianceMonitor.Application.Services
 
         private IPolicyRule CreateRuleForPolicy(Policy policy)
         {
-            // Get rule name from parameters
             if (!policy.Parameters.TryGetValue("rule_name", out var ruleNameObj) ||
                 ruleNameObj is not string ruleName)
             {
                 throw new InvalidOperationException($"Policy {policy.Name} does not specify a rule_name");
             }
 
-            // Validate rule type and name
             if (!_ruleTypes.TryGetValue(policy.RuleType, out var ruleTypeDict))
             {
                 throw new InvalidOperationException($"Unsupported rule type: {policy.RuleType}");
@@ -151,12 +143,8 @@ namespace ComplianceMonitor.Application.Services
                 throw new InvalidOperationException($"Unsupported rule name {ruleName} for type {policy.RuleType}");
             }
 
-            // Create rule instance
             try
             {
-                // For simplicity, we're using parameterless constructors for rules
-                // In a real implementation, you might want to use a more sophisticated approach to handle
-                // rule parameters and dependencies
                 return (IPolicyRule)Activator.CreateInstance(ruleType);
             }
             catch (Exception ex)

@@ -22,11 +22,9 @@ namespace ComplianceMonitor.Domain.Specifications.Rules.RBAC
                 return ComplianceStatus.Unknown;
             }
 
-            // Check if it's a binding for cluster-admin
             if (roleRef.TryGetValue("name", out var nameObj) && nameObj?.ToString() == "cluster-admin" &&
                 roleRef.TryGetValue("kind", out var kindObj) && kindObj?.ToString() == "ClusterRole")
             {
-                // Check for untrusted subjects
                 if (resource.Spec.TryGetValue("subjects", out var subjectsObj) &&
                     subjectsObj is List<object> subjects)
                 {

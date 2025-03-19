@@ -93,7 +93,6 @@ namespace ComplianceMonitor.Application.Services
 
             if (policyDto.Parameters != null)
             {
-                // Preservar o rule_name
                 var ruleName = policy.Parameters.ContainsKey("rule_name") ? policy.Parameters["rule_name"] : null;
                 var newParameters = policyDto.Parameters;
                 if (ruleName != null)

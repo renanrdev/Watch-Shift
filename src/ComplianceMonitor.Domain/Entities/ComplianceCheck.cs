@@ -13,7 +13,6 @@ namespace ComplianceMonitor.Domain.Entities
         public Dictionary<string, object> Details { get; private set; }
         public DateTime Timestamp { get; private set; }
 
-        // Para EF Core
         private ComplianceCheck() { }
 
         public ComplianceCheck(

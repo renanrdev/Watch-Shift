@@ -29,12 +29,10 @@ namespace ComplianceMonitor.Domain.Specifications.Rules.RBAC
                     continue;
                 }
 
-                // Check for wildcard resource permissions
                 if (rule.TryGetValue("resources", out var resourcesObj) &&
                     resourcesObj is List<object> resources &&
                     resources.Any(r => r?.ToString() == "*"))
                 {
-                    // Check if verbs are also wildcard
                     if (rule.TryGetValue("verbs", out var verbsObj) &&
                         verbsObj is List<object> verbs &&
                         verbs.Any(v => v?.ToString() == "*"))
@@ -43,12 +41,10 @@ namespace ComplianceMonitor.Domain.Specifications.Rules.RBAC
                     }
                 }
 
-                // Check for wildcard API groups
                 if (rule.TryGetValue("apiGroups", out var apiGroupsObj) &&
                     apiGroupsObj is List<object> apiGroups &&
                     apiGroups.Any(g => g?.ToString() == "*"))
                 {
-                    // Check if resources and verbs are also wildcard
                     if (rule.TryGetValue("resources", out var resourcesObj2) &&
                         resourcesObj2 is List<object> resources2 &&
                         resources2.Any(r => r?.ToString() == "*") &&

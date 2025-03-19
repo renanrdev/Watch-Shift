@@ -16,7 +16,6 @@ namespace ComplianceMonitor.Domain.Entities
         public DateTime CreatedAt { get; private set; }
         public DateTime UpdatedAt { get; private set; }
 
-        // Para EF Core
         private Policy() { }
 
         public Policy(string name, string description, SeverityLevel severity, RuleType ruleType, Dictionary<string, object> parameters = null)

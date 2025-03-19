@@ -34,7 +34,6 @@ namespace ComplianceMonitor.Infrastructure.Scanners
             {
                 _logger.LogInformation("Checking Trivy Operator availability");
 
-                // Attempt to get any vulnerability reports to check if Trivy Operator is working
                 var reports = await (_kubernetesClient).GetVulnerabilityReportsAsync(
                     _options.TestNamespace,
                     cancellationToken);
@@ -57,17 +56,14 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
             try
             {
-                // Normalize image name - extract repository name
                 var normalizedName = NormalizeImageName(imageName);
                 _logger.LogInformation($"Normalized image name: {normalizedName}");
 
-                // Since Trivy Operator generates reports based on running pods,
-                // we need to find all reports that match our image
                 var allReports = await (_kubernetesClient).GetVulnerabilityReportsAsync(
-                    null, // All namespaces
+                    null, // Todos namespaces
                     cancellationToken);
 
-                // Find reports that match our image name
+                // Procurar reports com base no nome da imagem
                 var matchingReports = allReports
                     .Where(r => r.ImageName.Contains(normalizedName))
                     .ToList();
@@ -85,12 +81,11 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
                 _logger.LogInformation($"Found {matchingReports.Count} vulnerability reports for image {imageName}");
 
-                // Use the most recent report
                 var latestReport = matchingReports
                     .OrderByDescending(r => r.CreationTimestamp)
                     .First();
 
-                // Map to our domain model
+                // Map para o modelo de dominio
                 var vulnerabilities = latestReport.Vulnerabilities
                     .Select(v => new Vulnerability(
                         id: Guid.NewGuid(),
@@ -134,17 +129,14 @@ namespace ComplianceMonitor.Infrastructure.Scanners
 
         private string NormalizeImageName(string imageName)
         {
-            // Remove tag if present
             if (imageName.Contains(':'))
             {
                 imageName = imageName.Split(':')[0];
             }
 
-            // Remove registry if present
             if (imageName.Contains('/'))
             {
                 var parts = imageName.Split('/');
-                // If the registry part contains a dot, it's likely a domain
                 if (parts[0].Contains('.') || parts[0].Contains(':'))
                 {
                     imageName = string.Join('/', parts.Skip(1));

@@ -19,7 +19,6 @@ namespace ComplianceMonitor.Infrastructure.Data.Configurations
             builder.Property(c => c.Timestamp)
                 .IsRequired();
 
-            // Relationships
             builder.HasOne(c => c.Policy)
                 .WithMany()
                 .HasForeignKey("PolicyId")
@@ -36,7 +35,6 @@ namespace ComplianceMonitor.Infrastructure.Data.Configurations
                 .WithOne(a => a.ComplianceCheck)
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Indexes
             builder.HasIndex("PolicyId");
             builder.HasIndex("ResourceId");
             builder.HasIndex(c => c.Status);

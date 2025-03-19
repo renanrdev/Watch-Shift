@@ -21,14 +21,12 @@ namespace ComplianceMonitor.Infrastructure.Data.Configurations
             builder.Property(a => a.CreatedAt)
                 .IsRequired();
 
-            // Relationships
             builder.HasOne(a => a.ComplianceCheck)
                 .WithMany()
                 .HasForeignKey("ComplianceCheckId")
                 .IsRequired()
                 .OnDelete(DeleteBehavior.Restrict);
 
-            // Indexes
             builder.HasIndex(a => a.Acknowledged);
             builder.HasIndex("ComplianceCheckId");
         }

@@ -19,13 +19,11 @@ namespace ComplianceMonitor.Infrastructure.Data.Configurations
             builder.Property(i => i.ScanTime)
                 .IsRequired();
 
-            // Relationships
             builder.HasMany(i => i.Vulnerabilities)
                 .WithOne()
                 .HasForeignKey("ImageScanResultId")
                 .OnDelete(DeleteBehavior.Cascade);
 
-            // Indexes
             builder.HasIndex(i => i.ImageName);
         }
     }

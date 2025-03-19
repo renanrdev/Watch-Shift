@@ -11,7 +11,6 @@ namespace ComplianceMonitor.Domain.Entities
         public string AcknowledgedBy { get; private set; }
         public DateTime? AcknowledgedAt { get; private set; }
 
-        // Para EF Core
         private Alert() { }
 
         public Alert(ComplianceCheck complianceCheck)

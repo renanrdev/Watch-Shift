@@ -40,7 +40,6 @@ namespace ComplianceMonitor.Application.Services
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _options = options?.Value ?? new ScanServiceOptions();
 
-            // Get the scanners by their type
             var scannerList = scanners?.ToList() ?? new List<IVulnerabilityScanner>();
             _directScanner = scannerList.FirstOrDefault(s => s.GetType().Name == "TrivyScanner");
             _operatorScanner = scannerList.FirstOrDefault(s => s.GetType().Name == "TrivyOperatorScanner");
@@ -55,7 +54,6 @@ namespace ComplianceMonitor.Application.Services
         {
             _logger.LogInformation("Starting scan for image {ImageName}, force={Force}", imageName, force);
 
-            // Check if there is a recent scan
             if (!force)
             {
                 var latestScan = await _scanRepository.GetLatestByImageNameAsync(imageName, cancellationToken);
@@ -66,10 +64,8 @@ namespace ComplianceMonitor.Application.Services
                 }
             }
 
-            // Determine which scanner to use
             IVulnerabilityScanner selectedScanner = null;
 
-            // First try the Trivy Operator scanner if enabled
             if (_options.UseOperatorScanner && _operatorScanner != null)
             {
                 bool operatorAvailable = await _operatorScanner.IsAvailableAsync(cancellationToken);
@@ -84,7 +80,6 @@ namespace ComplianceMonitor.Application.Services
                 }
             }
 
-            // Fall back to direct scanner if needed
             if (selectedScanner == null && _directScanner != null)
             {
                 bool directAvailable = await _directScanner.IsAvailableAsync(cancellationToken);
@@ -104,7 +99,6 @@ namespace ComplianceMonitor.Application.Services
                 throw new InvalidOperationException("No vulnerability scanner available");
             }
 
-            // Perform the scan
             _logger.LogInformation("Starting scan of image {ImageName}", imageName);
 
             try
@@ -113,7 +107,6 @@ namespace ComplianceMonitor.Application.Services
                 _logger.LogInformation("Scan completed for {ImageName}: found {VulnerabilityCount} vulnerabilities",
                     imageName, scanResult.Vulnerabilities.Count);
 
-                // Save the result
                 try
                 {
                     await _scanRepository.AddAsync(scanResult, cancellationToken);
@@ -140,7 +133,6 @@ namespace ComplianceMonitor.Application.Services
 
             try
             {
-                // If Trivy Operator is available, we can get results directly from it
                 if (_options.UseOperatorScanner && _operatorScanner != null &&
                     await _operatorScanner.IsAvailableAsync(cancellationToken))
                 {
@@ -148,7 +140,6 @@ namespace ComplianceMonitor.Application.Services
                     return await ScanAllImagesViaOperatorAsync(force, cancellationToken);
                 }
 
-                // Fall back to direct scanning
                 _logger.LogInformation("Using direct scanner for batch scan");
                 return await ScanAllImagesViaDirectScanAsync(force, cancellationToken);
             }
@@ -170,9 +161,8 @@ namespace ComplianceMonitor.Application.Services
         {
             try
             {
-                // Get vulnerability reports from Trivy Operator
                 var reports = await (_kubernetesClient).GetVulnerabilityReportsAsync(
-                    null, // All namespaces
+                    null, // Todos namespaces
                     cancellationToken);
 
                 if (!reports.Any())
@@ -187,7 +177,6 @@ namespace ComplianceMonitor.Application.Services
                     };
                 }
 
-                // Count vulnerabilities by severity
                 var vulnerabilityCounts = new Dictionary<string, int>();
                 var processedImages = new HashSet<string>();
 
@@ -197,10 +186,8 @@ namespace ComplianceMonitor.Application.Services
                     {
                         processedImages.Add(report.ImageName);
 
-                        // Convert report to ImageScanResult and save to repository
                         if (force || !await HasRecentScanAsync(report.ImageName, cancellationToken))
                         {
-                            // Create vulnerabilities
                             var vulnerabilities = report.Vulnerabilities
                                 .Select(v => new Vulnerability(
                                     id: Guid.NewGuid(),
@@ -214,7 +201,6 @@ namespace ComplianceMonitor.Application.Services
                                 ))
                                 .ToList();
 
-                            // Create metadata
                             var metadata = new Dictionary<string, object>
                             {
                                 ["reportName"] = report.Name,
@@ -224,7 +210,6 @@ namespace ComplianceMonitor.Application.Services
                                 ["source"] = "TrivyOperator"
                             };
 
-                            // Create and save scan result
                             var scanResult = new ImageScanResult(
                                 report.ImageName,
                                 vulnerabilities,
@@ -235,7 +220,7 @@ namespace ComplianceMonitor.Application.Services
                             await _scanRepository.AddAsync(scanResult, cancellationToken);
                         }
 
-                        // Count vulnerabilities by severity
+                        // Contar vulnerabilidades por severidade
                         foreach (var vuln in report.Vulnerabilities)
                         {
                             var severityKey = vuln.Severity.ToString();
@@ -267,12 +252,10 @@ namespace ComplianceMonitor.Application.Services
         {
             try
             {
-                // Get all unique running images
                 _logger.LogInformation("Retrieving all pods from the cluster");
                 var pods = await _kubernetesClient.GetAllPodsAsync(cancellationToken);
                 _logger.LogInformation("Retrieved {PodCount} pods from the cluster", pods.Count());
 
-                // Extract unique images com logging melhorado
                 var images = new HashSet<string>();
                 int podsWithImages = 0;
                 int podsWithoutImages = 0;
@@ -282,7 +265,6 @@ namespace ComplianceMonitor.Application.Services
                 {
                     try
                     {
-                        // Verificar diretamente os containers na estrutura raw do pod
                         var podImages = new HashSet<string>();
 
                         // Para pods do Kubernetes/OpenShift, a estrutura de um pod é bastante específica
@@ -418,7 +400,6 @@ namespace ComplianceMonitor.Application.Services
                             podsWithoutImages++;
                             _logger.LogWarning($"No images found in pod {pod.Name} in namespace {pod.Namespace}");
 
-                            // Se nenhuma imagem foi encontrada, fazer log das chaves disponíveis para depuração
                             if (pod.Spec != null)
                             {
                                 _logger.LogDebug($"Pod {pod.Name} spec keys: {string.Join(", ", pod.Spec.Keys)}");
@@ -434,12 +415,11 @@ namespace ComplianceMonitor.Application.Services
                 _logger.LogInformation($"Pods summary: pods with images: {podsWithImages}, pods without images: {podsWithoutImages}");
                 _logger.LogInformation($"Image summary: found {images.Count} unique images from {totalImageReferences} total references");
 
-                // Tratar caso em que não há imagens
                 var imageList = images.ToList();
                 if (imageList.Count == 0)
                 {
-                    // Se estamos em ambiente de desenvolvimento e a opção está habilitada,
-                    // usamos as imagens padrão configuradas
+                    // Em desenvolvimento e a opção está habilitada,
+                    // As imagens padrão são configuradas
                     if (_options.AddDefaultImagesInDev)
                     {
                         _logger.LogWarning("No images found in cluster. Using default development images for testing");
@@ -457,7 +437,6 @@ namespace ComplianceMonitor.Application.Services
                         }
                         else
                         {
-                            // Se nenhuma imagem foi configurada, adicionar algumas imagens conhecidas
                             imageList.Add("nginx:latest");
                             imageList.Add("registry.access.redhat.com/ubi8/ubi-minimal:latest");
                             _logger.LogInformation("Added fallback development images: nginx:latest, ubi8/ubi-minimal:latest");
@@ -476,16 +455,15 @@ namespace ComplianceMonitor.Application.Services
                     }
                 }
 
-                // Log do resultado final
+                // Log resultado final
                 _logger.LogInformation("Found {ImageCount} unique images to scan", imageList.Count);
 
-                // Log das primeiras 10 imagens (para depuração)
+                // Log primeiras 10 imagens (para depuração)
                 for (int i = 0; i < Math.Min(10, imageList.Count); i++)
                 {
                     _logger.LogInformation("Image {Index}: {Image}", i + 1, imageList[i]);
                 }
 
-                // Scan each image
                 var results = new Dictionary<string, ImageScanResult>();
                 int successfulScans = 0;
                 int failedScans = 0;
@@ -496,7 +474,6 @@ namespace ComplianceMonitor.Application.Services
                     {
                         _logger.LogInformation("Scanning image: {Image}", image);
 
-                        // Verificar primeiro se já existe um scan recente que não precisa ser forçado
                         if (!force)
                         {
                             var existingScan = await _scanRepository.GetLatestByImageNameAsync(image, cancellationToken);
@@ -537,7 +514,6 @@ namespace ComplianceMonitor.Application.Services
                 _logger.LogInformation("Scan completed. Total: {Total} images, Success: {Successful}, Failures: {Failed}",
                     imageList.Count, successfulScans, failedScans);
 
-                // Prepare vulnerability counts
                 var vulnerabilityCounts = new Dictionary<string, int>();
                 foreach (var scanResult in results.Values)
                 {
@@ -579,7 +555,6 @@ namespace ComplianceMonitor.Application.Services
         {
             try
             {
-                // If Trivy Operator is available, get reports directly from it
                 if (_options.UseOperatorScanner)
                 {
                     try
@@ -596,11 +571,9 @@ namespace ComplianceMonitor.Application.Services
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error getting vulnerability reports from Trivy Operator for namespace {Namespace}", @namespace);
-                        // Continue with regular approach
                     }
                 }
 
-                // Fall back to stored scan results
                 var pods = await _kubernetesClient.GetPodsAsync(@namespace, cancellationToken);
                 var imageResults = new Dictionary<string, List<ImageScanResult>>();
 
@@ -621,7 +594,6 @@ namespace ComplianceMonitor.Application.Services
                     }
                 }
 
-                // Calculate statistics
                 int totalVulnerabilities = 0;
                 int criticalVulnerabilities = 0;
                 int highVulnerabilities = 0;
@@ -705,20 +677,18 @@ namespace ComplianceMonitor.Application.Services
 
         public async Task<ImageScanResultDto> GetImageScanAsync(string imageName, CancellationToken cancellationToken = default)
         {
-            // First try to get from Trivy Operator if enabled
             if (_options.UseOperatorScanner)
             {
                 try
                 {
-                    // Normalize image name
                     var normalizedName = NormalizeImageName(imageName);
 
-                    // Get all reports from Trivy Operator
+                    // Obter reports do Trivy Operator
                     var reports = await (_kubernetesClient).GetVulnerabilityReportsAsync(
-                        null, // All namespaces
+                        null, // Todos namespaces
                         cancellationToken);
 
-                    // Find reports that match our image
+                    // Procurar reports por imagem
                     var matchingReports = reports
                         .Where(r => r.ImageName.Contains(normalizedName))
                         .OrderByDescending(r => r.CreationTimestamp)
@@ -728,7 +698,7 @@ namespace ComplianceMonitor.Application.Services
                     {
                         var latestReport = matchingReports.First();
 
-                        // Convert to ImageScanResult
+                        // Converter para ImageScanResult
                         var vulnerabilities = latestReport.Vulnerabilities
                             .Select(v => new Vulnerability(
                                 id: Guid.NewGuid(),
@@ -764,11 +734,9 @@ namespace ComplianceMonitor.Application.Services
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Error getting vulnerability report from Trivy Operator for {ImageName}", imageName);
-                    // Continue with regular approach
                 }
             }
 
-            // Fall back to database lookup
             var storedScanResult = await _scanRepository.GetLatestByImageNameAsync(imageName, cancellationToken);
             if (storedScanResult == null)
             {
@@ -782,11 +750,9 @@ namespace ComplianceMonitor.Application.Services
         {
             try
             {
-                // Check direct scanner
                 bool directAvailable = _directScanner != null &&
                                       await _directScanner.IsAvailableAsync(cancellationToken);
 
-                // Check operator scanner
                 bool operatorAvailable = _operatorScanner != null &&
                                         await _operatorScanner.IsAvailableAsync(cancellationToken);
 
@@ -794,7 +760,6 @@ namespace ComplianceMonitor.Application.Services
                 {
                     string scannerType = directAvailable ? "Direct Trivy" : "Trivy Operator";
 
-                    // Test scan with a common image
                     var result = directAvailable
                         ? await _directScanner.ScanImageAsync("nginx:latest", cancellationToken)
                         : await _operatorScanner.ScanImageAsync("nginx", cancellationToken);
@@ -833,8 +798,6 @@ namespace ComplianceMonitor.Application.Services
         private ImageScanResultDto CreateImageScanResultDto(ImageScanResult scanResult)
         {
             var dto = _mapper.Map<ImageScanResultDto>(scanResult);
-
-            // Convert the severity counts to string keys
             var severityCounts = scanResult.CountBySeverity();
             dto.SeverityCounts = severityCounts.ToDictionary(kvp => kvp.Key.ToString(), kvp => kvp.Value);
 
@@ -968,17 +931,14 @@ namespace ComplianceMonitor.Application.Services
 
         private string NormalizeImageName(string imageName)
         {
-            // Remove tag if present
             if (imageName.Contains(':'))
             {
                 imageName = imageName.Split(':')[0];
             }
 
-            // Remove registry if present
             if (imageName.Contains('/'))
             {
                 var parts = imageName.Split('/');
-                // If the registry part contains a dot, it's likely a domain
                 if (parts[0].Contains('.') || parts[0].Contains(':'))
                 {
                     imageName = string.Join('/', parts.Skip(1));

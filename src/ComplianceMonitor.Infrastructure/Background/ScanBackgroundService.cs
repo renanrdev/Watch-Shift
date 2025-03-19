@@ -30,7 +30,6 @@ namespace ComplianceMonitor.Infrastructure.Background
         {
             _logger.LogInformation("Scan Background Service is starting");
 
-            // Initial delay before starting scans
             await Task.Delay(TimeSpan.FromMinutes(_options.InitialDelayMinutes), stoppingToken);
 
             while (!stoppingToken.IsCancellationRequested)
@@ -39,12 +38,10 @@ namespace ComplianceMonitor.Infrastructure.Background
 
                 try
                 {
-                    // Create scope to resolve scoped services
                     using (var scope = _serviceProvider.CreateScope())
                     {
                         var scanService = scope.ServiceProvider.GetRequiredService<IScanService>();
 
-                        // Scan all images
                         var result = await scanService.ScanAllImagesAsync(
                             force: _options.ForceScans,
                             cancellationToken: stoppingToken);
@@ -61,7 +58,6 @@ namespace ComplianceMonitor.Infrastructure.Background
                     _logger.LogError(ex, "Error performing scheduled scan");
                 }
 
-                // Wait for next scan interval
                 var intervalMinutes = Math.Max(1, _options.ScanIntervalMinutes);
                 _logger.LogInformation("Next scan scheduled after {IntervalMinutes} minutes", intervalMinutes);
                 await Task.Delay(TimeSpan.FromMinutes(intervalMinutes), stoppingToken);
@@ -74,7 +70,7 @@ namespace ComplianceMonitor.Infrastructure.Background
     public class ScanBackgroundServiceOptions
     {
         public int InitialDelayMinutes { get; set; } = 5;
-        public int ScanIntervalMinutes { get; set; } = 360; // 6 hours by default
+        public int ScanIntervalMinutes { get; set; } = 360; // 6 horas
         public bool ForceScans { get; set; } = false;
     }
 }
