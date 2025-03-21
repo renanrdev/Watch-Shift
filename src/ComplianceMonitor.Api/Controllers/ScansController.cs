@@ -52,7 +52,7 @@ namespace ComplianceMonitor.Api.Controllers
             {
                 var result = await _scanService.ScanAllImagesAsync(force, cancellationToken);
 
-                // Em ambiente de desenvolvimento utiliza imagens padrões
+                // Em ambiente de desenvolvimento utilizar imagens padrões
                 if (result.ScannedImages == 0 && _environment.IsDevelopment())
                 {
                     // Adicionar sugestões ao resultado

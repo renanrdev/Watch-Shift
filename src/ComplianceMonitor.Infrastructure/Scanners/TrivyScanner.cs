@@ -238,7 +238,7 @@ namespace ComplianceMonitor.Infrastructure.Scanners
                 }
 
                 var outputTask = process.StandardOutput.ReadToEndAsync();
-                var errorTask = process.StandardError.ReadToEndAsync();
+                var errorTask =  process.StandardError.ReadToEndAsync();
 
                 using var timeoutTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(_options.TimeoutSeconds));
                 using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(timeoutTokenSource.Token, cancellationToken);
